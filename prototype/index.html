@@ -222,15 +222,19 @@
                     <form id="form-admin-login" onsubmit="handleAdminLogin(event)">
                         <div class="input-group">
                             <i class="fa-solid fa-envelope input-icon"></i>
-                            <input type="text" id="admin-email" value="admin@school.com" required />
+                            <input type="email" id="admin-email" placeholder="EMAIL" aria-label="Admin email" autocomplete="username" required />
                         </div>
                         <div class="input-group">
                             <i class="fa-solid fa-lock input-icon"></i>
-                            <input type="password" id="admin-pass" value="password" required />
+                            <input type="password" id="admin-pass" placeholder="PASSWORD" aria-label="Admin password" autocomplete="current-password" required />
                         </div>
                         <button type="submit" class="btn btn-purple">LOG IN</button>
                     </form>
-                    <div class="auth-links"><p><a onclick="switchView('view-login')">Back to Student Login</a></p></div>
+                    <p id="admin-login-message" class="auth-message" role="status"></p>
+                    <div class="auth-links">
+                        <p>Don't have an admin account? <button id="admin-signup-open" type="button" class="auth-link" onclick="openAdminSignup()">SIGN UP</button></p>
+                        <p><a onclick="switchView('view-login')">Back to Student Login</a></p>
+                    </div>
                 </div>
             </section>
 
@@ -239,7 +243,7 @@
                 <div class="user-header card admin-theme">
                     <div>
                         <span class="subtext">Admin Control</span>
-                        <h3>WELCOME ADMIN</h3>
+                        <h3 id="admin-display-name">WELCOME ADMIN</h3>
                     </div>
                     <div style="display:flex; gap:8px;">
                         <button class="btn btn-small btn-purple" onclick="switchView('view-admin-create-event')">
@@ -391,6 +395,68 @@
                 <button class="btn btn-primary" onclick="closeScannedModal()">OK</button>
             </div>
         </div>
+
+        <dialog id="admin-signup-modal" class="admin-signup-dialog" aria-labelledby="admin-signup-title">
+            <div class="admin-signup-header">
+                <p id="admin-signup-progress" class="subtext">Step 1 of 3</p>
+                <button type="button" class="auth-link" onclick="closeAdminSignup()" aria-label="Close admin signup">Close</button>
+            </div>
+            <h2 id="admin-signup-title">Admin sign up</h2>
+
+            <form id="form-admin-email" onsubmit="handleAdminEmail(event)">
+                <p class="subtext auth-intro">Enter your approved email to get an authorization key.</p>
+                <label for="admin-signup-email">Email</label>
+                <div class="input-group">
+                    <i class="fa-solid fa-envelope input-icon" aria-hidden="true"></i>
+                    <input type="email" id="admin-signup-email" autocomplete="email" required />
+                </div>
+                <button type="submit" class="btn btn-purple">Continue</button>
+            </form>
+
+            <form id="form-admin-key" class="hidden" onsubmit="handleAdminKey(event)">
+                <p class="subtext auth-intro">Demo: your key is filled in automatically. No email is sent. It expires in 15 minutes.</p>
+                <p id="admin-key-email" class="auth-intro"></p>
+                <label for="admin-signup-key">Authorization key</label>
+                <div class="input-group">
+                    <i class="fa-solid fa-key input-icon" aria-hidden="true"></i>
+                    <input type="text" id="admin-signup-key" autocomplete="off" spellcheck="false" required />
+                </div>
+                <button type="submit" class="btn btn-purple">Verify key</button>
+                <button type="button" class="auth-link auth-back" onclick="resetAdminVerification()">Change email / request a new key</button>
+            </form>
+
+            <form id="form-admin-signup" class="hidden" onsubmit="handleAdminSignup(event)">
+                <p class="subtext auth-intro">Email verified. Complete your admin account details.</p>
+                <label for="admin-signup-id">Student ID</label>
+                <div class="input-group">
+                    <i class="fa-solid fa-id-card input-icon" aria-hidden="true"></i>
+                    <input type="text" id="admin-signup-id" placeholder="STUDENT ID" required />
+                </div>
+                <label for="admin-signup-name">Full name</label>
+                <div class="input-group">
+                    <i class="fa-solid fa-user input-icon" aria-hidden="true"></i>
+                    <input type="text" id="admin-signup-name" placeholder="FULL NAME" autocomplete="name" required />
+                </div>
+                <label for="admin-verified-email">Email</label>
+                <div class="input-group">
+                    <i class="fa-solid fa-envelope input-icon" aria-hidden="true"></i>
+                    <input type="email" id="admin-verified-email" readonly />
+                </div>
+                <label for="admin-signup-pass">Password</label>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock input-icon" aria-hidden="true"></i>
+                    <input type="password" id="admin-signup-pass" autocomplete="new-password" required />
+                </div>
+                <label for="admin-signup-confirm">Confirm password</label>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock input-icon" aria-hidden="true"></i>
+                    <input type="password" id="admin-signup-confirm" autocomplete="new-password" required />
+                </div>
+                <button type="submit" class="btn btn-purple">Create admin account</button>
+            </form>
+            <p id="admin-signup-error" class="auth-error" role="alert"></p>
+            <button type="button" class="auth-link auth-back" onclick="closeAdminSignup()">Back to admin login</button>
+        </dialog>
 
         <div id="toast" class="toast hidden">Notification</div>
 

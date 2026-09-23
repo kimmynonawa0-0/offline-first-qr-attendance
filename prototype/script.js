@@ -17,6 +17,11 @@ let previousViewBeforeScanner = null;
 let isScannerStopping = false;
 let scannedModalTarget = null;
 
+// Demo allowlist mirrors simple_authentication.py. Verification is browser-only.
+const ALLOWED_ADMIN_EMAILS = new Set(['okims@gmail.com', 'test@example.com']);
+const ADMIN_KEY_LIFETIME_MS = 15 * 60 * 1000;
+let pendingAdminSignup = null;
+
 /* ================================================================
    LOCAL STORAGE HELPERS
 ================================================================ */
@@ -221,12 +226,16 @@ function handleStudentLogin(e) {
 
 function handleAdminLogin(e) {
     e.preventDefault();
-    const email = document.getElementById('admin-email').value.trim();
-    const password = document.getElementById('admin-pass').value.trim();
+    const email = document.getElementById('admin-email').value.trim().toLowerCase();
+    const password = document.getElementById('admin-pass').value;
+    const admin = getAdmins().find(a => a.email === email && a.password === password);
 
-    if (email === 'admin@school.com' && password === 'password') {
+    if (admin && ALLOWED_ADMIN_EMAILS.has(email)) {
         APP_STATE.isLoggedIn = true;
-        APP_STATE.user.role = 'admin';
+        APP_STATE.user = { name: admin.name, id: admin.id, email, role: 'admin' };
+        document.getElementById('admin-display-name').textContent = admin.name;
+        document.getElementById('admin-pass').value = '';
+        document.getElementById('admin-login-message').textContent = '';
         renderNav();
         loadLocalRecords();
         renderAdminEvents();
@@ -237,6 +246,125 @@ function handleAdminLogin(e) {
     } else {
         showToast('Invalid admin credentials');
     }
+}
+
+function getAdmins() {
+    return JSON.parse(localStorage.getItem('mock_admins') || '[]');
+}
+
+function showAdminSignupStep(step) {
+    const forms = ['form-admin-email', 'form-admin-key', 'form-admin-signup'];
+    forms.forEach((id, index) => {
+        document.getElementById(id).classList.toggle('hidden', index !== step - 1);
+    });
+    document.getElementById('admin-signup-progress').textContent = `Step ${step} of 3`;
+    document.getElementById('admin-signup-title').textContent =
+        ['Admin sign up', 'Verify your email', 'Create admin account'][step - 1];
+    document.getElementById('admin-signup-error').textContent = '';
+    document.getElementById(forms[step - 1]).querySelector('input').focus();
+}
+
+function resetAdminVerification() {
+    pendingAdminSignup = null;
+    document.getElementById('form-admin-key').reset();
+    document.getElementById('form-admin-signup').reset();
+    showAdminSignupStep(1);
+}
+
+function openAdminSignup() {
+    document.getElementById('form-admin-email').reset();
+    document.getElementById('admin-login-message').textContent = '';
+    resetAdminVerification();
+    document.getElementById('admin-signup-modal').showModal();
+    document.getElementById('admin-signup-email').focus();
+}
+
+function closeAdminSignup() {
+    resetAdminVerification();
+    document.getElementById('admin-signup-modal').close();
+    document.getElementById('admin-signup-open').focus();
+}
+
+function adminSignupError(message) {
+    document.getElementById('admin-signup-error').textContent = message;
+}
+
+function handleAdminEmail(e) {
+    e.preventDefault();
+    pendingAdminSignup = null;
+    const email = document.getElementById('admin-signup-email').value.trim().toLowerCase();
+    if (!ALLOWED_ADMIN_EMAILS.has(email)) {
+        adminSignupError('This email is not authorized for admin signup.');
+        return;
+    }
+    if (getAdmins().some(admin => admin.email === email)) {
+        adminSignupError('This email already has an admin account. Go back to admin login.');
+        return;
+    }
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    const key = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    pendingAdminSignup = { email, key, expiresAt: Date.now() + ADMIN_KEY_LIFETIME_MS, verified: false };
+    document.getElementById('admin-signup-key').value = key;
+    document.getElementById('admin-key-email').textContent = email;
+    showAdminSignupStep(2);
+}
+
+function handleAdminKey(e) {
+    e.preventDefault();
+    if (!pendingAdminSignup || Date.now() >= pendingAdminSignup.expiresAt) {
+        resetAdminVerification();
+        adminSignupError('Your key has expired. Submit your email to get a new key.');
+        return;
+    }
+    if (pendingAdminSignup.verified || document.getElementById('admin-signup-key').value.trim() !== pendingAdminSignup.key) {
+        adminSignupError('Invalid authorization key. Check the key and try again.');
+        return;
+    }
+    pendingAdminSignup.verified = true;
+    pendingAdminSignup.key = null;
+    document.getElementById('admin-signup-key').value = '';
+    document.getElementById('admin-verified-email').value = pendingAdminSignup.email;
+    showAdminSignupStep(3);
+}
+
+function handleAdminSignup(e) {
+    e.preventDefault();
+    if (!pendingAdminSignup || !pendingAdminSignup.verified || Date.now() >= pendingAdminSignup.expiresAt) {
+        resetAdminVerification();
+        adminSignupError('Please verify your email again before creating an account.');
+        return;
+    }
+    const { email } = pendingAdminSignup;
+    const id = document.getElementById('admin-signup-id').value.trim();
+    const name = document.getElementById('admin-signup-name').value.trim();
+    const password = document.getElementById('admin-signup-pass').value;
+    const confirm = document.getElementById('admin-signup-confirm').value;
+    if (!id || !name || !password.trim() || !confirm.trim()) {
+        adminSignupError('Please fill in all fields.');
+        return;
+    }
+    if (password !== confirm) {
+        adminSignupError('Passwords do not match.');
+        return;
+    }
+    const admins = getAdmins();
+    if (!ALLOWED_ADMIN_EMAILS.has(email) || admins.some(admin => admin.email === email || admin.id === id)) {
+        adminSignupError('This email or student ID is already registered, or the email is no longer authorized.');
+        return;
+    }
+    // Keep demo accounts separate from student accounts and attendance records.
+    try {
+        localStorage.setItem('mock_admins', JSON.stringify([...admins, { id, name, email, password }]));
+    } catch {
+        adminSignupError('Could not save your account. Enable browser storage and try again.');
+        return;
+    }
+    closeAdminSignup();
+    switchView('view-admin-login');
+    document.getElementById('admin-email').value = email;
+    document.getElementById('admin-pass').value = '';
+    document.getElementById('admin-login-message').textContent = 'Admin account created. Log in with your email and password.';
+    document.getElementById('admin-pass').focus();
 }
 
 function logout() {
@@ -973,6 +1101,10 @@ window.addEventListener('offline', updateNetworkStatus);
    INIT
 ================================================================ */
 document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById('admin-signup-modal').addEventListener('cancel', event => {
+        event.preventDefault();
+        closeAdminSignup();
+    });
     updateNetworkStatus();
     loadLocalRecords();
     renderRecords();
