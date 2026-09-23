@@ -338,6 +338,16 @@
                             <i class="fa-solid fa-camera"></i> SCAN FOR THIS EVENT
                         </button>
                     </div>
+                    <div id="organizer-attendance" class="card">
+                        <h4>MY ATTENDANCE</h4>
+                        <p id="organizer-identity" class="subtext"></p>
+                        <p id="organizer-attendance-status" class="auth-message" role="status"></p>
+                        <div class="btn-row">
+                            <button id="organizer-checkin-btn" type="button" class="btn btn-primary" onclick="checkInOrganizer()">Check myself in</button>
+                            <button type="button" class="btn btn-secondary" onclick="enlargeQR()">My QR</button>
+                        </div>
+                        <p class="subtext" style="margin-top:12px;">Self check-in is recorded as organizer attendance.</p>
+                    </div>
                     <div style="margin-top:16px;">
                         <h4>ATTENDEES (<span id="event-attendee-count">0</span>)</h4>
                         <div id="event-attendee-list" style="max-height:200px; overflow-y:auto;">

@@ -22,6 +22,20 @@ accounts. They persist across reloads in the same browser and origin. Clearing
 browser storage removes them. The registration fields follow student signup;
 an existing student account is not required.
 
+## Organizer attendance
+
+After admin login, open **Manage** on an event and select **Check myself in**.
+The app uses the signed-in admin's student ID and name, records them as present
+with the method `organizer`, and stays on the event screen. No ID re-entry or
+account switching is needed. The button becomes **Already present** when that
+student ID is already in the event, including attendance scanned by another officer.
+
+**My QR** displays the admin's student QR for another officer to scan instead.
+Organizer attendance is labeled in the attendee list, event history, and attendance
+records and is saved locally with a pending sync status. This is an explicit
+self-declaration of attendance; the prototype allows any logged-in admin managing
+an event to use it and does not implement event-specific officer assignments.
+
 ## Prototype limits
 
 No email is sent. Keys are generated in the browser, expire after 15 minutes,

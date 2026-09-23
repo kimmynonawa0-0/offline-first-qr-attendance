@@ -461,6 +461,7 @@ function enlargeQR() {
     const modal = document.getElementById('qr-enlarged-modal');
     if (!modal) return;
     const id = APP_STATE.user.id || '2024-00123';
+    document.getElementById('enlarged-qr-label').textContent = `Student ID: ${id}`;
     const img = document.getElementById('enlarged-qr-img');
     if (img) {
         img.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(id)}`;
@@ -509,7 +510,7 @@ function renderRecords() {
         card.innerHTML = `
             <div>
                 <strong>${rec.event}</strong>
-                <div class="subtext">${rec.studentName || rec.studentId} • ${rec.date} • ${rec.time}</div>
+                <div class="subtext">${rec.studentName || rec.studentId} • ${rec.date} • ${rec.time}${rec.method === 'organizer' ? ' • Organizer check-in' : ''}</div>
             </div>
             <span class="record-status status-${rec.status.toLowerCase()}">${rec.status} ${rec.synced ? '' : '• Local'}</span>
         `;
@@ -710,7 +711,7 @@ function renderHistoryEvents() {
         card.style.marginBottom = '10px';
         card.style.cursor = 'pointer';
         const attendees = event.attendees || [];
-        const attendeeNames = attendees.map(a => a.name).join(', ') || 'No attendees';
+        const attendeeNames = attendees.map(a => `${a.name}${a.method === 'organizer' ? ' (Organizer check-in)' : ''}`).join(', ') || 'No attendees';
         card.innerHTML = `
             <div style="flex:1;">
                 <strong>${event.name}</strong>
@@ -772,13 +773,34 @@ function recordAttendance(eventName, location) {
     showToast(`✅ ${APP_STATE.user.name} checked in!`);
 }
 
-function recordAttendanceForEvent(studentId, studentName, eventName, location) {
+function checkInOrganizer() {
+    if (!APP_STATE.isLoggedIn || APP_STATE.user.role !== 'admin' || !APP_STATE.user.id || !APP_STATE.user.name) {
+        showToast('Log in as an admin to check yourself in.');
+        return;
+    }
+    recordAttendanceForEvent(APP_STATE.user.id, APP_STATE.user.name, currentEventName, currentEventLocation, 'organizer');
+}
+
+function renderOrganizerAttendance(event) {
+    const isAdmin = APP_STATE.isLoggedIn && APP_STATE.user.role === 'admin';
+    document.getElementById('organizer-attendance').classList.toggle('hidden', !isAdmin);
+    const attendance = (event.attendees || []).find(a => a.id === APP_STATE.user.id);
+    document.getElementById('organizer-identity').textContent = `${APP_STATE.user.name} (${APP_STATE.user.id})`;
+    document.getElementById('organizer-attendance-status').textContent = attendance
+        ? `Present: ${attendance.method === 'organizer' ? 'Organizer check-in' : 'Student check-in'} at ${attendance.time}`
+        : 'You have not checked in to this event yet.';
+    const button = document.getElementById('organizer-checkin-btn');
+    button.disabled = !isAdmin || Boolean(attendance);
+    button.textContent = attendance ? 'Already present' : 'Check myself in';
+}
+
+function recordAttendanceForEvent(studentId, studentName, eventName, location, method = 'scan') {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     let events = JSON.parse(localStorage.getItem('events') || '[]');
-    const eventIndex = events.findIndex(e => e.name === eventName);
+    const eventIndex = events.findIndex(e => e.id === currentEventId);
     if (eventIndex === -1) {
         showToast(`⚠️ Event "${eventName}" not found`);
         return;
@@ -794,13 +816,15 @@ function recordAttendanceForEvent(studentId, studentName, eventName, location) {
         renderTodayEvents();
         return;
     }
-    events[eventIndex].attendees.push({ id: studentId, name: studentName, time: timeStr });
+    events[eventIndex].attendees.push({ id: studentId, name: studentName, time: timeStr, method });
     localStorage.setItem('events', JSON.stringify(events));
 
     const newRecord = {
         id: Date.now(),
         studentId: studentId,
         studentName: studentName,
+        eventId: events[eventIndex].id,
+        method,
         event: eventName,
         date: dateStr,
         time: timeStr,
@@ -813,6 +837,12 @@ function recordAttendanceForEvent(studentId, studentName, eventName, location) {
     renderAdminRecent();
     renderAdminEvents();
     renderTodayEvents();
+
+    if (method === 'organizer') {
+        refreshEventDetail();
+        showToast('You are present as an organizer.');
+        return;
+    }
 
     document.getElementById("rec-student").innerText = studentName;
     document.getElementById("rec-id").innerText = studentId;
@@ -842,8 +872,9 @@ function recordAttendanceForEvent(studentId, studentName, eventName, location) {
 
 function refreshEventDetail() {
     const events = JSON.parse(localStorage.getItem('events') || '[]');
-    const event = events.find(e => e.name === currentEventName);
+    const event = events.find(e => e.id === currentEventId);
     if (!event) return;
+    renderOrganizerAttendance(event);
     document.getElementById('event-attendee-count').innerText = event.attendees ? event.attendees.length : 0;
     const list = document.getElementById('event-attendee-list');
     list.innerHTML = '';
@@ -852,7 +883,11 @@ function refreshEventDetail() {
             const item = document.createElement('div');
             item.className = 'receipt-row';
             item.style.padding = '6px 0';
-            item.innerHTML = `<span>${a.name}</span> <strong>${a.time}</strong>`;
+            const name = document.createElement('span');
+            name.textContent = `${a.name}${a.method === 'organizer' ? ' (Organizer check-in)' : ''}`;
+            const time = document.createElement('strong');
+            time.textContent = a.time;
+            item.append(name, time);
             list.appendChild(item);
         });
     } else {
@@ -1018,21 +1053,7 @@ function openEventDetail(eventId) {
     document.getElementById('event-detail-name').innerText = event.name;
     document.getElementById('event-detail-loc').innerText = event.location;
     document.getElementById('event-detail-time').innerText = `${event.date} • ${event.time}`;
-    document.getElementById('event-attendee-count').innerText = event.attendees ? event.attendees.length : 0;
-
-    const list = document.getElementById('event-attendee-list');
-    list.innerHTML = '';
-    if (event.attendees && event.attendees.length > 0) {
-        event.attendees.forEach(a => {
-            const item = document.createElement('div');
-            item.className = 'receipt-row';
-            item.style.padding = '6px 0';
-            item.innerHTML = `<span>${a.name}</span> <strong>${a.time}</strong>`;
-            list.appendChild(item);
-        });
-    } else {
-        list.innerHTML = '<p class="subtext" style="text-align:center; padding:20px 0;">No students checked in yet</p>';
-    }
+    refreshEventDetail();
     switchView('view-event-detail');
     showToast(`Managing: ${event.name}`);
 }

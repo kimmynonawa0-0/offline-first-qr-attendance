@@ -320,6 +320,11 @@ h4 {
     padding: 4px 0;
     text-decoration: underline;
 }
+.btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+    transform: none;
+}
 .admin-signup-dialog {
     margin: auto;
     width: min(390px, calc(100% - 32px));

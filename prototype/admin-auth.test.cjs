@@ -21,6 +21,7 @@ function setup(storage = new Map()) {
                 toggle: (value, force) => force ? classes.add(value) : classes.delete(value)
             },
             focus() {},
+            appendChild() {},
             showModal() { this.open = true; },
             close() { this.open = false; },
             querySelector() { return { focus() {} }; },
@@ -39,6 +40,8 @@ function setup(storage = new Map()) {
                 return elements.get(id);
             },
             addEventListener() {},
+            createElement() { return { style: {}, append() {}, appendChild() {} }; },
+            querySelector() { return null; },
             querySelectorAll() { return []; }
         },
         window: { addEventListener() {} },
@@ -161,4 +164,60 @@ test('the previous hardcoded admin credentials no longer bypass signup', () => {
     app.set('admin-pass', 'password');
     app.call('handleAdminLogin');
     assert.equal(app.run('APP_STATE.isLoggedIn'), false);
+});
+
+function organizerSetup() {
+    const app = setup();
+    app.run("APP_STATE.isLoggedIn = true; APP_STATE.user = { id: '2026-001', name: 'Event Officer', role: 'admin' }");
+    app.storage.set('events', JSON.stringify([
+        { id: 1, name: 'Assembly', location: 'Hall', date: '2026-09-23', time: '10:00', attendees: [] },
+        { id: 2, name: 'Assembly', location: 'Room', date: '2026-09-24', time: '10:00', attendees: [] }
+    ]));
+    app.run('openEventDetail(2)');
+    return app;
+}
+
+test('organizer check-in uses signed-in identity and exact event, persists and prevents duplicates', () => {
+    const app = organizerSetup();
+    assert.equal(app.element('organizer-checkin-btn').disabled, false);
+    app.call('checkInOrganizer');
+    const events = JSON.parse(app.storage.get('events'));
+    assert.equal(events[0].attendees.length, 0);
+    assert.equal(events[1].attendees[0].id, '2026-001');
+    assert.equal(events[1].attendees[0].method, 'organizer');
+    const records = JSON.parse(app.storage.get('attendance_records'));
+    assert.equal(records[0].eventId, 2);
+    assert.equal(records[0].method, 'organizer');
+    assert.equal(records[0].synced, false);
+    assert.equal(app.element('view-event-detail').classList.contains('active'), true);
+    assert.equal(app.element('organizer-checkin-btn').disabled, true);
+    app.call('checkInOrganizer');
+    assert.equal(JSON.parse(app.storage.get('attendance_records')).length, 1);
+    app.call('enlargeQR');
+    assert.match(app.element('enlarged-qr-img').src, /2026-001/);
+    assert.equal(app.element('enlarged-qr-label').textContent, 'Student ID: 2026-001');
+    const reloaded = setup(app.storage);
+    reloaded.run("APP_STATE.isLoggedIn = true; APP_STATE.user = { id: '2026-001', name: 'Event Officer', role: 'admin' }; openEventDetail(2)");
+    assert.equal(reloaded.element('organizer-checkin-btn').disabled, true);
+    assert.match(reloaded.element('organizer-attendance-status').textContent, /Organizer check-in/);
+});
+
+test('students and logged-out users cannot self check in as organizers', () => {
+    const app = organizerSetup();
+    app.run("APP_STATE.user.role = 'student'");
+    app.call('checkInOrganizer');
+    app.run("APP_STATE.user.role = 'admin'; APP_STATE.isLoggedIn = false");
+    app.call('checkInOrganizer');
+    assert.equal(app.storage.has('attendance_records'), false);
+    assert.equal(JSON.parse(app.storage.get('events'))[1].attendees.length, 0);
+});
+
+test('scanned attendance prevents a second organizer entry and keeps its original method', () => {
+    const app = organizerSetup();
+    app.run("recordAttendanceForEvent('2026-001', 'Event Officer', 'Assembly', 'Room')");
+    app.call('checkInOrganizer');
+    const records = JSON.parse(app.storage.get('attendance_records'));
+    assert.equal(records.length, 1);
+    assert.equal(records[0].method, 'scan');
+    assert.equal(app.element('organizer-checkin-btn').disabled, true);
 });
