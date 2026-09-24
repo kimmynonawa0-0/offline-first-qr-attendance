@@ -41,6 +41,7 @@
                             <input type="password" id="login-pass" placeholder="PASSWORD" required />
                             <i class="fa-solid fa-eye toggle-pass" onclick="togglePassword('login-pass', this)"></i>
                         </div>
+                        <div class="password-recovery-link"><button id="student-forgot-password" type="button" class="auth-link" onclick="openPasswordReset('student')">Forgot password?</button></div>
                         <button type="submit" class="btn btn-primary">LOG IN</button>
                     </form>
                     <div class="auth-links">
@@ -228,6 +229,7 @@
                             <i class="fa-solid fa-lock input-icon"></i>
                             <input type="password" id="admin-pass" placeholder="PASSWORD" aria-label="Admin password" autocomplete="current-password" required />
                         </div>
+                        <div class="password-recovery-link"><button id="admin-forgot-password" type="button" class="auth-link" onclick="openPasswordReset('admin')">Forgot password?</button></div>
                         <button type="submit" class="btn btn-purple">LOG IN</button>
                     </form>
                     <p id="admin-login-message" class="auth-message" role="status"></p>
@@ -405,6 +407,42 @@
                 <button class="btn btn-primary" onclick="closeScannedModal()">OK</button>
             </div>
         </div>
+
+        <dialog id="password-reset-modal" class="admin-signup-dialog" aria-labelledby="password-reset-title">
+            <div class="admin-signup-header">
+                <p id="password-reset-progress" class="subtext">Step 1 of 3</p>
+                <button type="button" class="auth-link" onclick="closePasswordReset()">Close</button>
+            </div>
+            <h2 id="password-reset-title">Reset password</h2>
+            <form id="form-reset-email" onsubmit="handleResetEmail(event)">
+                <p class="subtext auth-intro">Enter the email registered to your account.</p>
+                <label for="reset-email">Email</label>
+                <div class="input-group"><input type="email" id="reset-email" autocomplete="email" required /></div>
+                <div id="reset-id-group" class="hidden">
+                    <label for="reset-student-id">Student ID</label>
+                    <div class="input-group"><input type="text" id="reset-student-id" /></div>
+                </div>
+                <button type="submit" class="btn btn-primary">Get reset code</button>
+            </form>
+            <form id="form-reset-code" class="hidden" onsubmit="handleResetCode(event)">
+                <p class="subtext auth-intro">Demo: the code is filled in automatically. No email is sent. It expires in 15 minutes.</p>
+                <p id="reset-email-display" class="auth-intro"></p>
+                <label for="reset-code">Reset code</label>
+                <div class="input-group"><input type="text" id="reset-code" autocomplete="one-time-code" required /></div>
+                <button type="submit" class="btn btn-primary">Verify code</button>
+                <button type="button" class="auth-link auth-back" onclick="restartPasswordReset()">Change email / request a new code</button>
+            </form>
+            <form id="form-reset-password" class="hidden" onsubmit="handleResetPassword(event)">
+                <p class="subtext auth-intro">Choose a new password. Your name, student ID, and other account details will stay the same.</p>
+                <label for="reset-password">New password</label>
+                <div class="input-group"><input type="password" id="reset-password" autocomplete="new-password" required /></div>
+                <label for="reset-confirm">Confirm new password</label>
+                <div class="input-group"><input type="password" id="reset-confirm" autocomplete="new-password" required /></div>
+                <button type="submit" class="btn btn-primary">Update password</button>
+            </form>
+            <p id="password-reset-error" class="auth-error" role="alert"></p>
+            <button type="button" class="auth-link auth-back" onclick="closePasswordReset()">Back to login</button>
+        </dialog>
 
         <dialog id="admin-signup-modal" class="admin-signup-dialog" aria-labelledby="admin-signup-title">
             <div class="admin-signup-header">

@@ -320,6 +320,11 @@ h4 {
     padding: 4px 0;
     text-decoration: underline;
 }
+.password-recovery-link {
+    margin: -8px 0 16px;
+    text-align: left;
+    font-size: 0.9rem;
+}
 .btn:disabled {
     opacity: 0.6;
     cursor: default;

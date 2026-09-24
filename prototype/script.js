@@ -21,6 +21,9 @@ let scannedModalTarget = null;
 const ALLOWED_ADMIN_EMAILS = new Set(['okims@gmail.com', 'test@example.com']);
 const ADMIN_KEY_LIFETIME_MS = 15 * 60 * 1000;
 let pendingAdminSignup = null;
+let passwordResetRole = 'student';
+let pendingPasswordReset = null;
+const PASSWORD_RESET_LIFETIME_MS = 15 * 60 * 1000;
 
 /* ================================================================
    LOCAL STORAGE HELPERS
@@ -195,7 +198,7 @@ function handleSignup(e) {
 function handleStudentLogin(e) {
     e.preventDefault();
     const id = document.getElementById('login-id').value.trim();
-    const password = document.getElementById('login-pass').value.trim();
+    const password = document.getElementById('login-pass').value;
 
     if (!id || !password) {
         showToast('Please enter Student ID and Password');
@@ -365,6 +368,130 @@ function handleAdminSignup(e) {
     document.getElementById('admin-pass').value = '';
     document.getElementById('admin-login-message').textContent = 'Admin account created. Log in with your email and password.';
     document.getElementById('admin-pass').focus();
+}
+
+function showPasswordResetStep(step) {
+    const forms = ['form-reset-email', 'form-reset-code', 'form-reset-password'];
+    forms.forEach((id, index) => document.getElementById(id).classList.toggle('hidden', index !== step - 1));
+    document.getElementById('password-reset-progress').textContent = `Step ${step} of 3`;
+    document.getElementById('password-reset-error').textContent = '';
+    document.getElementById(forms[step - 1]).querySelector('input').focus();
+}
+
+function restartPasswordReset() {
+    pendingPasswordReset = null;
+    ['form-reset-code', 'form-reset-password'].forEach(id => document.getElementById(id).reset());
+    document.getElementById('reset-student-id').value = '';
+    document.getElementById('reset-id-group').classList.add('hidden');
+    showPasswordResetStep(1);
+}
+
+function openPasswordReset(role) {
+    passwordResetRole = role === 'admin' ? 'admin' : 'student';
+    document.getElementById('form-reset-email').reset();
+    restartPasswordReset();
+    document.getElementById('password-reset-title').textContent = `${passwordResetRole === 'admin' ? 'Admin' : 'Student'} password reset`;
+    document.getElementById('password-reset-modal').showModal();
+    document.getElementById('reset-email').focus();
+}
+
+function closePasswordReset() {
+    restartPasswordReset();
+    document.getElementById('form-reset-email').reset();
+    document.getElementById('password-reset-modal').close();
+    document.getElementById(`${passwordResetRole}-forgot-password`).focus();
+}
+
+function resetPasswordError(message) {
+    document.getElementById('password-reset-error').textContent = message;
+}
+
+function getResetAccounts() {
+    return passwordResetRole === 'admin' ? getAdmins() : getUsers();
+}
+
+function handleResetEmail(e) {
+    e.preventDefault();
+    pendingPasswordReset = null;
+    const email = document.getElementById('reset-email').value.trim().toLowerCase();
+    let matches = getResetAccounts().filter(account => account.email.toLowerCase().trim() === email);
+    if (matches.length > 1) {
+        document.getElementById('reset-id-group').classList.remove('hidden');
+        const id = document.getElementById('reset-student-id').value.trim();
+        matches = matches.filter(account => account.id === id);
+        if (matches.length !== 1) {
+            resetPasswordError('This email is shared. Enter your student ID to select your account.');
+            document.getElementById('reset-student-id').focus();
+            return;
+        }
+    }
+    if (matches.length !== 1) {
+        resetPasswordError(`No ${passwordResetRole} account matches this email.`);
+        return;
+    }
+    const code = Array.from(crypto.getRandomValues(new Uint8Array(6)), byte => (byte % 10).toString()).join('');
+    pendingPasswordReset = { id: matches[0].id, email, code, verified: false, expiresAt: Date.now() + PASSWORD_RESET_LIFETIME_MS };
+    document.getElementById('reset-code').value = code;
+    document.getElementById('reset-email-display').textContent = email;
+    showPasswordResetStep(2);
+}
+
+function hasActivePasswordReset() {
+    if (!pendingPasswordReset || Date.now() >= pendingPasswordReset.expiresAt) {
+        restartPasswordReset();
+        resetPasswordError('Request a new code. Your password reset is missing or has expired.');
+        return false;
+    }
+    return true;
+}
+
+function handleResetCode(e) {
+    e.preventDefault();
+    if (!hasActivePasswordReset()) return;
+    if (pendingPasswordReset.verified || document.getElementById('reset-code').value.trim() !== pendingPasswordReset.code) {
+        resetPasswordError('Incorrect reset code. Check the code and try again.');
+        return;
+    }
+    pendingPasswordReset.verified = true;
+    pendingPasswordReset.code = null;
+    document.getElementById('reset-code').value = '';
+    showPasswordResetStep(3);
+}
+
+function handleResetPassword(e) {
+    e.preventDefault();
+    if (!hasActivePasswordReset()) return;
+    if (!pendingPasswordReset.verified) {
+        resetPasswordError('Verify your reset code first.');
+        return;
+    }
+    const password = document.getElementById('reset-password').value;
+    if (!password.trim() || password !== document.getElementById('reset-confirm').value) {
+        resetPasswordError('Enter a new password and make sure both passwords match.');
+        return;
+    }
+    const accounts = getResetAccounts();
+    const account = accounts.find(a => a.id === pendingPasswordReset.id && a.email.trim().toLowerCase() === pendingPasswordReset.email);
+    if (!account) {
+        restartPasswordReset();
+        resetPasswordError('The account changed. Request a new code.');
+        return;
+    }
+    account.password = password;
+    try {
+        localStorage.setItem(passwordResetRole === 'admin' ? 'mock_admins' : 'mock_users', JSON.stringify(accounts));
+    } catch {
+        resetPasswordError('Could not save your password. Enable browser storage and try again.');
+        return;
+    }
+    closePasswordReset();
+    const admin = passwordResetRole === 'admin';
+    switchView(admin ? 'view-admin-login' : 'view-login');
+    document.getElementById(admin ? 'admin-email' : 'login-id').value = admin ? account.email : account.id;
+    const passwordInput = document.getElementById(admin ? 'admin-pass' : 'login-pass');
+    passwordInput.value = '';
+    passwordInput.focus();
+    showToast('Password updated. Log in with your new password.');
 }
 
 function logout() {
@@ -1122,6 +1249,10 @@ window.addEventListener('offline', updateNetworkStatus);
    INIT
 ================================================================ */
 document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById('password-reset-modal').addEventListener('cancel', event => {
+        event.preventDefault();
+        closePasswordReset();
+    });
     document.getElementById('admin-signup-modal').addEventListener('cancel', event => {
         event.preventDefault();
         closeAdminSignup();

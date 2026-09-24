@@ -177,6 +177,96 @@ function organizerSetup() {
     return app;
 }
 
+function resetSetup(role = 'student') {
+    const app = setup();
+    const account = { id: '2026-123', name: 'Test Person', email: 'test@example.com', password: 'old password', extra: 'preserve me' };
+    app.storage.set('mock_users', JSON.stringify([account]));
+    app.storage.set('mock_admins', JSON.stringify([account]));
+    app.run(`openPasswordReset('${role}')`);
+    app.set('reset-email', ' TEST@EXAMPLE.COM ');
+    app.call('handleResetEmail');
+    return app;
+}
+
+for (const role of ['student', 'admin']) {
+    test(`${role} password reset changes only its password and supports login after reload`, () => {
+        const app = resetSetup(role);
+        assert.match(app.element('reset-code').value, /^\d{6}$/);
+        const key = role === 'admin' ? 'mock_admins' : 'mock_users';
+        const otherKey = role === 'admin' ? 'mock_users' : 'mock_admins';
+        const original = JSON.parse(app.storage.get(key))[0];
+        const untouched = app.storage.get(otherKey);
+        app.call('handleResetCode');
+        app.set('reset-password', ' new password ');
+        app.set('reset-confirm', ' new password ');
+        app.call('handleResetPassword');
+        assert.deepEqual(JSON.parse(app.storage.get(key))[0], { ...original, password: ' new password ' });
+        assert.equal(app.storage.get(otherKey), untouched);
+        assert.equal(app.element('password-reset-modal').open, false);
+        assert.equal(app.run('pendingPasswordReset'), null);
+        assert.equal(app.element(role === 'admin' ? 'view-admin-login' : 'view-login').classList.contains('active'), true);
+        const reloaded = setup(app.storage);
+        reloaded.set(role === 'admin' ? 'admin-email' : 'login-id', role === 'admin' ? original.email : original.id);
+        reloaded.set(role === 'admin' ? 'admin-pass' : 'login-pass', original.password);
+        reloaded.call(role === 'admin' ? 'handleAdminLogin' : 'handleStudentLogin');
+        assert.equal(reloaded.run('APP_STATE.isLoggedIn'), false);
+        reloaded.set(role === 'admin' ? 'admin-pass' : 'login-pass', ' new password ');
+        reloaded.call(role === 'admin' ? 'handleAdminLogin' : 'handleStudentLogin');
+        assert.equal(reloaded.run('APP_STATE.isLoggedIn'), true);
+    });
+}
+
+test('password reset rejects wrong codes, skipped verification, mismatches, expiry and cancellation', () => {
+    const app = resetSetup();
+    const original = app.storage.get('mock_users');
+    const code = app.element('reset-code').value;
+    app.set('reset-password', 'new password');
+    app.set('reset-confirm', 'new password');
+    app.call('handleResetPassword');
+    assert.match(app.element('password-reset-error').textContent, /Verify/);
+    app.set('reset-code', 'incorrect');
+    app.call('handleResetCode');
+    assert.match(app.element('password-reset-error').textContent, /Incorrect/);
+    app.set('reset-code', code);
+    app.call('handleResetCode');
+    app.set('reset-confirm', 'different');
+    app.call('handleResetPassword');
+    assert.match(app.element('password-reset-error').textContent, /match/);
+    app.run('pendingPasswordReset.expiresAt = 0');
+    app.call('handleResetPassword');
+    assert.match(app.element('password-reset-error').textContent, /expired/);
+    app.call('handleResetEmail');
+    app.call('handleResetCode');
+    app.call('closePasswordReset');
+    app.call('handleResetPassword');
+    assert.equal(app.storage.get('mock_users'), original);
+});
+
+test('unknown emails are rejected and shared emails require the matching student ID', () => {
+    const app = resetSetup();
+    app.call('restartPasswordReset');
+    app.set('reset-email', 'unknown@example.com');
+    app.call('handleResetEmail');
+    assert.equal(app.run('pendingPasswordReset'), null);
+    assert.match(app.element('password-reset-error').textContent, /No student account/);
+    const accounts = JSON.parse(app.storage.get('mock_users'));
+    accounts.push({ ...accounts[0], id: '2026-456' });
+    app.storage.set('mock_users', JSON.stringify(accounts));
+    app.set('reset-email', 'test@example.com');
+    app.call('handleResetEmail');
+    assert.equal(app.run('pendingPasswordReset'), null);
+    assert.equal(app.element('reset-id-group').classList.contains('hidden'), false);
+    app.set('reset-student-id', '2026-456');
+    app.call('handleResetEmail');
+    app.call('handleResetCode');
+    app.set('reset-password', 'changed');
+    app.set('reset-confirm', 'changed');
+    app.call('handleResetPassword');
+    const updated = JSON.parse(app.storage.get('mock_users'));
+    assert.deepEqual(updated[0], accounts[0]);
+    assert.equal(updated[1].password, 'changed');
+});
+
 test('organizer check-in uses signed-in identity and exact event, persists and prevents duplicates', () => {
     const app = organizerSetup();
     assert.equal(app.element('organizer-checkin-btn').disabled, false);

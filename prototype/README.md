@@ -38,6 +38,15 @@ an event to use it and does not implement event-specific officer assignments.
 
 ## Prototype limits
 
+Both login screens offer **Forgot password?**. Enter the account's registered
+email, verify the auto-filled demo code, then enter and confirm a new password.
+The reset changes only the password and returns to the corresponding login.
+Student and admin resets are separate, even when they share an email. If multiple
+student accounts share an email, enter the student ID when prompted.
+Reset codes expire after 15 minutes (including password entry), are consumed on
+verification, and are cleared when recovery is cancelled. No email is sent and
+email ownership is not actually verified in this prototype.
+
 No email is sent. Keys are generated in the browser, expire after 15 minutes,
 and are discarded after verification or cancellation. Registration must also
 finish within that time. Accounts, including passwords, are stored as plain
