@@ -1,3 +1,11 @@
+## Mobile Prototype
+
+The React Native + Expo migration lives in [`mobile/`](mobile/README.md).
+Run `npm install` and `npx expo start` from that directory to use Expo Go.
+The original browser prototype remains in `prototype/` for reference. The mobile
+migration preserves the demo flows; email verification and synchronization are
+still simulated, and data is saved only on the current device.
+
 <div align="center">
   <h1>⬛ EdgeSync</h1>
   <p><b>Offline-First QR Attendance Engine</b></p>
