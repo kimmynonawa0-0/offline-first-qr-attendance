@@ -7,7 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
 import QRCode from 'react-native-qrcode-svg';
 import { useApp } from './state';
-import { LoginScreen } from './Auth';
+import { ChangePasswordScreen, LoginScreen } from './Auth';
+import RosterImport from './RosterImport';
 import Scanner from './Scanner';
 import { checkIn, createEvent, deleteEvent, demoSync, localDate, methodLabel } from './model.mjs';
 import { Button, Card, colors, ErrorText, Field, Heading, LinkButton, ModalFrame, Muted, Row, styles, Title, UniversityBanner } from './ui';
@@ -66,7 +67,7 @@ function Attendees({ event }) {
 }
 
 export default function AppScreen() {
-  const { page: screen = 'student-login', eventId, recordId } = useLocalSearchParams();
+  const { page: screen = 'login', eventId, recordId } = useLocalSearchParams();
   const focused = useIsFocused();
   const { data, user, setUser, loading, error: storageError, load, update, online, notice, setNotice } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
@@ -87,8 +88,12 @@ export default function AppScreen() {
   if (loading || !data) return <SafeAreaView style={styles.safe}><View style={{ padding: 24 }}>
     <Heading>NORWE-SCAN</Heading>{loading ? <ActivityIndicator color={colors.green} /> : <><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
   </View></SafeAreaView>;
-  const authScreen = ['student-login', 'admin-login'].includes(screen);
+  const authScreen = ['login', 'student-login', 'admin-login'].includes(screen);
+  const account = user && data[user.role === 'admin' ? 'admins' : 'students'].find(a => a.id === user.id);
+  const mustChange = Boolean(account?.mustChangePassword);
   if (!authScreen && !user) return focused ? <Redirect href="/" /> : null;
+  if (user && mustChange && screen !== 'change-password') return focused ? <Redirect href="/change-password" /> : null;
+  if (user && !mustChange && screen === 'change-password') return focused ? <Redirect href={`/${home}`} /> : null;
   if (user && (authScreen || (adminScreens.includes(screen) && user.role !== 'admin') || (studentScreens.includes(screen) && user.role !== 'student'))) {
     return focused ? <Redirect href={`/${home}`} /> : null;
   }
@@ -102,8 +107,11 @@ export default function AppScreen() {
   const receipt = data.records.find(r => r.id === recordId);
 
   let content;
-  if (authScreen) content = <LoginScreen role={screen === 'admin-login' ? 'admin' : 'student'} onSwitch={() => replace(screen === 'admin-login' ? 'student-login' : 'admin-login')}
-    onLogin={account => { setUser(account); replace(account.role === 'admin' ? 'admin-home' : 'student-home'); }} />;
+  if (authScreen) content = <LoginScreen
+    onLogin={account => { setUser(account); replace(account.mustChangePassword ? 'change-password' : account.role === 'admin' ? 'admin-home' : 'student-home'); }} />;
+  else if (screen === 'change-password') content = <ChangePasswordScreen
+    onComplete={account => { setUser(account); replace(account.role === 'admin' ? 'admin-home' : 'student-home'); }}
+    onLogout={() => { setUser(null); router.replace('/'); }} />;
   else if (screen === 'student-home') content = <>
     <UniversityBanner />
     <Card><Muted>Welcome, Student</Muted><Title>{user.name}</Title><Muted>ID: {user.id}</Muted></Card>
@@ -121,6 +129,7 @@ export default function AppScreen() {
   else if (screen === 'admin-home') content = <>
     <UniversityBanner />
     <Card admin><Muted>Admin control</Muted><Title>{user.name}</Title><Button purple onPress={() => go('create-event')}>+ Create event</Button><Button secondary onPress={() => go('history')}>History</Button></Card>
+    <RosterImport />
     <Card><Title>Today&apos;s events</Title>{todayEvents.length ? todayEvents.map(e => <View key={e.id}><Text style={{ fontWeight: '600' }}>{e.name}</Text><Muted>{e.attendees.length} checked in</Muted></View>) : <Muted>No events for today.</Muted>}</Card>
     <Card><Title>Today&apos;s attendance</Title><Metrics items={[["Total", todayRecords.length], ['Present', todayRecords.filter(r => r.status === 'PRESENT').length]]} /></Card>
     <Card><Title>Manage events</Title>{data.events.length ? data.events.map(e => <View key={e.id}>
@@ -166,7 +175,7 @@ export default function AppScreen() {
           <ErrorText>{error}</ErrorText>{content}
         </ScrollView>
       </KeyboardAvoidingView>
-      {user && screen !== 'scanner' && <View style={styles.nav}>
+      {user && !mustChange && screen !== 'scanner' && <View style={styles.nav}>
         <Pressable accessibilityRole="button" accessibilityLabel={user.role === 'admin' ? 'Dashboard' : 'Home'} onPress={() => replace(home)} style={styles.navItem}><Ionicons name="home-outline" size={23} color={colors.green} /><Text style={styles.navText}>{user.role === 'admin' ? 'Dashboard' : 'Home'}</Text></Pressable>
         {user.role === 'student' && <Pressable accessibilityRole="button" accessibilityLabel="Records" onPress={() => replace('records')} style={styles.navItem}><Ionicons name="list-outline" size={23} color={colors.green} /><Text style={styles.navText}>Records</Text></Pressable>}
         <Pressable accessibilityRole="button" accessibilityLabel="Logout" onPress={() => setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: () => { setUser(null); setConfirm(null); router.replace('/'); } })} style={styles.navItem}><Ionicons name="log-out-outline" size={23} color={colors.green} /><Text style={styles.navText}>Logout</Text></Pressable>

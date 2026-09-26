@@ -1,14 +1,12 @@
-export const ALLOWED_ADMIN_EMAILS = ['okims@gmail.com', 'test@example.com'];
-export const CODE_LIFETIME = 15 * 60 * 1000;
-export const normalizeEmail = value => value.trim().toLowerCase();
 const collection = role => role === 'admin' ? 'admins' : 'students';
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
+export const DEMO_ADMIN = { id: '23-02330', name: 'Demo Organizer', section: 'BSCS-3C', email: '', password: 'BSCS-3C', mustChangePassword: true };
 
 export function initialData() {
   return {
-    version: 1,
-    students: [{ id: '2024-00123', name: 'Juan Dela Cruz', email: 'juan@school.com', password: 'password' }],
-    admins: [], events: [], records: [],
+    version: 2,
+    students: [],
+    admins: [{ ...DEMO_ADMIN }], events: [], records: [],
   };
 }
 
@@ -16,79 +14,39 @@ export function localDate(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-export function login(data, role, identifier, password) {
-  const account = data[collection(role)].find(a =>
-    (role === 'admin' ? a.email === normalizeEmail(identifier) : a.id === identifier.trim()) && a.password === password);
-  requireValue(account && (role !== 'admin' || ALLOWED_ADMIN_EMAILS.includes(account.email)), 'Invalid credentials. Please try again.');
-  return { id: account.id, name: account.name, email: account.email, role };
+export function login(data, identifier, password) {
+  const id = identifier.trim();
+  const role = data.admins.some(a => a.id === id) ? 'admin' : 'student';
+  const account = data[collection(role)].find(a => a.id === id && a.password === password);
+  requireValue(account, 'Invalid student ID or password. Contact your faculty if your account has not been imported.');
+  return sessionFor(account, role);
 }
 
-export function issueChallenge(data, { purpose, role, email, studentId = '', code }, now = Date.now()) {
-  email = normalizeEmail(email);
-  requireValue(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), 'Enter a valid email address.');
-  const accounts = data[collection(role)];
-  let id = null;
-  if (purpose === 'signup') {
-    requireValue(role === 'admin' && ALLOWED_ADMIN_EMAILS.includes(email), 'This email is not approved for admin signup.');
-    requireValue(!accounts.some(a => a.email === email), 'This email already has an admin account. Please log in.');
-  } else {
-    let matches = accounts.filter(a => normalizeEmail(a.email) === email);
-    requireValue(matches.length, `No ${role} account matches this email.`);
-    if (matches.length > 1) {
-      matches = matches.filter(a => a.id === studentId.trim());
-      requireValue(matches.length === 1, 'This email is shared. Enter your student ID to select your account.');
-    }
-    id = matches[0].id;
-  }
-  return { purpose, role, email, id, code, verified: false, expiresAt: now + CODE_LIFETIME };
+export function sessionFor(account, role) {
+  const { id, name, email, section, mustChangePassword } = account;
+  return { id, name, email, section, mustChangePassword, role };
 }
 
-export function verifyChallenge(challenge, code, now = Date.now()) {
-  requireValue(challenge && now < challenge.expiresAt, 'Code expired. Request a new code.');
-  requireValue(!challenge.verified && code.trim() === challenge.code, 'Incorrect verification code.');
-  return { ...challenge, code: null, verified: true };
-}
-
-function requireVerified(challenge, purpose, role, now) {
-  requireValue(challenge?.verified && challenge.purpose === purpose && challenge.role === role && now < challenge.expiresAt,
-    'Verify your email again. The verification is missing or expired.');
-}
-
-function checkPassword(password, confirm) {
-  requireValue(password.trim(), 'Enter a password.');
+export function changePassword(data, user, password, confirm) {
+  requireValue(user && ['admin', 'student'].includes(user.role), 'Please log in again.');
+  const key = collection(user.role);
+  const account = data[key].find(a => a.id === user.id);
+  requireValue(account?.mustChangePassword, 'Password change is not pending. Please log in again.');
+  requireValue(password.trim().length >= 12, 'Use at least 12 characters for your new password.');
   requireValue(password === confirm, 'Passwords do not match.');
+  requireValue(password.trim().toLowerCase() !== account.section.trim().toLowerCase() && password !== account.password,
+    'Choose a new password, not your section or current password.');
+  return { ...data, [key]: data[key].map(a => a.id === account.id ? { ...a, password, mustChangePassword: false } : a) };
 }
 
-export function register(data, role, fields, challenge, now = Date.now()) {
-  const id = fields.id.trim();
-  const name = fields.name.trim();
-  const email = normalizeEmail(role === 'admin' ? challenge?.email || '' : fields.email);
-  requireValue(id && name && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), 'Enter your student ID, full name, and a valid email.');
-  checkPassword(fields.password, fields.confirm);
-  if (role === 'admin') {
-    requireVerified(challenge, 'signup', role, now);
-    requireValue(ALLOWED_ADMIN_EMAILS.includes(email), 'This email is not approved.');
-  }
-  const key = collection(role);
-  requireValue(!data[key].some(a => a.id === id || (role === 'admin' && a.email === email)), 'Student ID or admin email already registered.');
-  return { ...data, [key]: [...data[key], { id, name, email, password: fields.password }] };
-}
-
-export function resetPassword(data, challenge, password, confirm, now = Date.now()) {
-  requireVerified(challenge, 'reset', challenge?.role, now);
-  checkPassword(password, confirm);
-  const key = collection(challenge.role);
-  const index = data[key].findIndex(a => a.id === challenge.id && normalizeEmail(a.email) === challenge.email);
-  requireValue(index !== -1, 'Account changed. Request a new code.');
-  return { ...data, [key]: data[key].map((a, i) => i === index ? { ...a, password } : a) };
-}
-
-function requireAdmin(user) {
-  requireValue(user?.role === 'admin' && user.id && user.name, 'Log in as an admin to manage attendance.');
+export function requireAdmin(data, user) {
+  const account = data.admins.find(a => a.id === user?.id);
+  requireValue(user?.role === 'admin' && account, 'Log in as an admin to manage attendance.');
+  requireValue(!account.mustChangePassword, 'Change your password before continuing.');
 }
 
 export function createEvent(data, user, fields, id) {
-  requireAdmin(user);
+  requireAdmin(data, user);
   const name = fields.name.trim();
   const location = fields.location.trim();
   const date = fields.date.trim();
@@ -102,13 +60,13 @@ export function createEvent(data, user, fields, id) {
 }
 
 export function deleteEvent(data, user, id) {
-  requireAdmin(user);
+  requireAdmin(data, user);
   // Keep historical attendance receipts, matching the browser prototype.
   return { ...data, events: data.events.filter(e => e.id !== id) };
 }
 
 export function checkIn(data, user, eventId, person, method, recordId, now = new Date()) {
-  requireAdmin(user);
+  requireAdmin(data, user);
   requireValue(['organizer', 'scan', 'demo'].includes(method), 'Invalid check-in method.');
   const event = data.events.find(e => e.id === eventId);
   requireValue(event, 'Event no longer exists.');
@@ -131,7 +89,7 @@ export function checkIn(data, user, eventId, person, method, recordId, now = new
 }
 
 export function demoSync(data, user, online) {
-  requireAdmin(user);
+  requireAdmin(data, user);
   requireValue(online, 'You are offline. Records are saved on this device.');
   return { ...data, records: data.records.map(r => ({ ...r, synced: true })) };
 }

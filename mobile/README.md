@@ -1,7 +1,7 @@
 # NORWE-SCAN mobile prototype
 
-React Native + Expo migration of `../prototype`, preserving the prototype
-account/event workflows with a university-green gradient theme.
+React Native + Expo attendance prototype with a university-green gradient theme.
+The mobile account flow follows the revised faculty-roster design, not the old signup flow.
 The browser prototype is retained for comparison. This is a native interface,
 not a WebView wrapper.
 
@@ -19,15 +19,49 @@ npx expo start
 Scan the development QR with Expo Go on Android. Keep your phone and computer
 on the same network. To preview in a browser, run `npm run web`.
 
-Student demo login: **2024-00123** / **password**.
-Admins must sign up first using **okims@gmail.com** or **test@example.com**.
-The allowlist is `ALLOWED_ADMIN_EMAILS` in `src/model.mjs`.
+On a fresh installation, log in as **23-02330** / **BSCS-3C** and change the
+password before entering the admin dashboard. This is a prototype-only seed
+account, not a production administrator provisioning mechanism.
+An existing `DEMO-ADMIN` account is renamed to `23-02330` on restart, retaining
+its password and attendance. A conflicting existing ID stops migration without overwriting data.
+
+Import `examples/faculty-roster.csv` from the dashboard. Log out, then log in as
+**2024-00123** / **BSCS-3C** and choose a new password to enter the student dashboard.
+Both roles use the same login page. The saved account determines the role;
+CSV files cannot grant admin access.
+
+## Faculty roster
+
+Export a faculty spreadsheet as **CSV UTF-8 (.csv)**. Direct `.xlsx`/`.xls`
+imports are not supported in this version. Format ID cells as text before export
+so Excel does not discard leading zeros.
+
+```csv
+student_id,name,section,email
+2024-00123,Juan Dela Cruz,BSCS-3C,juan@example.com
+2024-00124,"Santos, Maria",BSCS-3C,maria@example.com
+```
+
+Email is optional. `Student ID` and `Full Name` header spellings also work.
+The app validates the complete file, previews the first five rows and counts,
+then requires confirmation. Limits: 1 MB and 5,000 students per file. Malformed
+rows, duplicate IDs within the file, and missing required fields reject the
+whole import. Existing IDs (including admins) are skipped: names, passwords,
+roles, and sections are not overwritten. Reimporting cannot reset a password.
+
+New accounts use the exact section text as their temporary password and must
+replace it with a different password of at least 12 characters. Dashboard,
+attendance, and import access remain blocked until that change is saved.
+
+The administrator website, role assignment by URL, admin requests/proofs, and
+automated password recovery are deferred. The old auto-filled email signup/reset
+flow has been removed; the left-aligned Forgot password link shows account help.
 
 ## Migrated flows
 
-- Separate student and admin login, account creation, password visibility, and logout confirmation.
-- Admin signup: approved email, auto-filled expiring code, account details, return to login.
-- Student/admin password recovery: registered email, auto-filled code, new password. Other account details remain unchanged; shared student emails require student ID.
+- One student-ID login with automatic role selection, password visibility, and logout confirmation.
+- Admin faculty roster import instead of student or admin self-signup.
+- Mandatory first-login password change for both roles, persisted across app restarts.
 - Student dashboard, locally generated personal QR, enlarged QR, current event, and searchable personal attendance records.
 - Admin dashboard, today's attendance, event creation/deletion, history with expandable attendees, and recent attendance.
 - Event camera QR scanning, student confirmation, demo scan fallback, duplicate prevention, and attendance receipt.
@@ -43,7 +77,15 @@ does not block the demo scan option.
 ## Local data and prototype boundaries
 
 Accounts, events, and attendance persist in AsyncStorage under
-`norwe-scan-mobile-v1`. Updates save a complete snapshot before reporting success.
+`norwe-scan-mobile-v1` (data schema version 2). Updates save a complete snapshot before reporting success.
+Existing version-1 accounts keep their current passwords for their next login,
+then must change them. Existing events and receipts are retained. If an ID was
+stored as both a student and an admin, the admin account/credentials take
+precedence and the duplicate student account is removed. Existing admins now
+log in by student ID, not email. Prototype startup also creates the demo admin
+if `23-02330` is unused, even when older admins exist. It never resets an existing
+password or promotes a student using that ID. Remove this demo provisioning
+before production deployment.
 Closing the app preserves data; users log in again after a fresh launch.
 Browser localStorage and mobile storage are separate: previous browser accounts
 and records are not automatically imported. Expo Go, browser previews, and
@@ -55,11 +97,15 @@ to validate cold launch independently of the Expo development server.
 
 This migration does not add a backend, database server, real email delivery,
 encrypted credentials, signed QR codes, or cross-device synchronization. Passwords
-remain plain text demo data. Codes auto-fill and expire after 15 minutes; they
-do not prove email ownership. Use demo credentials only.
+remain plain text demo data. A section is a shared, guessable temporary password;
+forced change does not verify student identity or make this production-secure.
+Production needs trusted account provisioning, server-side authorization,
+secure password storage, and a safer initial activation process. Use demo data only.
 
 Demo sync changes local flags; it uploads nothing. A student using a different
-phone will not receive an organizer's attendance records until real sync exists.
+phone will not receive imported accounts or attendance records until real sync exists.
+Demonstrate import and student login on the same device for now. There is no
+shared database or mobile account-import path for students yet.
 Student records are scoped to their ID on the current device. Event deletion
 retains historical attendance receipts. Self-check-in is labeled as organizer
 attendance and is available to any logged-in admin managing the event.
@@ -79,10 +125,12 @@ any images. Shared control colors are in `src/ui.jsx`.
 | --- | --- |
 | `src/app/` | Expo Router entry and screen routes |
 | `src/AppScreen.jsx` | Dashboards, events, records, receipts, and navigation |
-| `src/Auth.jsx` | Login, signup, and recovery popups |
+| `src/Auth.jsx` | Unified login, account help, required password change |
+| `src/RosterImport.jsx` | CSV picker, preview, and import confirmation |
+| `src/roster.mjs` | CSV validation and student-only account creation |
 | `src/Scanner.jsx` | Camera permission, scanning, and manual demo entry |
 | `src/ui.jsx` | Shared native controls and existing visual theme |
-| `src/model.mjs` | Account, verification, event, and attendance rules |
+| `src/model.mjs` | Account, password, event, and attendance rules |
 | `src/storage.mjs` | Serialized local persistence |
 | `src/state.jsx` | Shared data/session state and connectivity |
 
@@ -123,5 +171,5 @@ starter artwork; branding work is separate from this behavior migration.
 
 Before a defense, test on a real phone: camera permission allowed/denied,
 QR scanning between two phones, organizer check-in, duplicate scans, keyboard
-visibility, Android back navigation, restart persistence, password recovery,
+visibility, Android back navigation, restart persistence, roster import, first-login password change,
 and cold launch in airplane mode. Bundling cannot verify physical camera behavior.

@@ -3,8 +3,9 @@
 The React Native + Expo migration lives in [`mobile/`](mobile/README.md).
 Run `npm install` and `npx expo start` from that directory to use Expo Go.
 The original browser prototype remains in `prototype/` for reference. The mobile
-migration preserves the demo flows; email verification and synchronization are
-still simulated, and data is saved only on the current device.
+app now uses one student-ID login, faculty CSV roster imports, and a mandatory
+first-login password change. Synchronization is still simulated, and data is
+saved only on the current device. See the mobile README for demo credentials.
 
 <div align="center">
   <h1>⬛ EdgeSync</h1>
