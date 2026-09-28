@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { Platform, Text } from 'react-native';
+import { Platform, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
-import { Button, Card, ErrorText, Muted, Title } from './ui';
+import { Button, Card, colors, ErrorText, Eyebrow, Muted, Row, styles, Title } from './ui';
 import { useApp } from './state';
 import { importRoster, MAX_ROSTER_BYTES, parseRoster, rosterSummary } from './roster.mjs';
 
@@ -27,14 +27,22 @@ export default function RosterImport() {
     } catch (e) { setError(e.message || 'Could not read this file. Please select a CSV.'); }
   }
   return <Card>
-    <Title>Import faculty roster</Title>
-    <Muted>Export Excel or Google Sheets as CSV UTF-8. Required columns: student_id, name, section. Email is optional.</Muted>
-    <Muted>New students start with their section as a temporary password. Existing IDs are skipped without changing passwords or roles.</Muted>
-    <Muted>Prototype: imported accounts are available on this device only.</Muted>
-    <Button secondary disabled={busy} onPress={choose}>Choose CSV file</Button>
+    {!preview && <>
+      <Title>Choose a CSV roster</Title>
+      <Muted>Required columns: student_id, name, and section. Email is optional.</Muted>
+      <Button disabled={busy} onPress={choose}>Choose CSV file</Button>
+      <Muted>New students use their section as a temporary password. Existing accounts stay unchanged.</Muted>
+    </>}
     {preview && <>
-      <Text>{preview.name}</Text>
-      <Title>{summary.added} new / {summary.skipped} existing</Title>
+      <Eyebrow>File selected</Eyebrow>
+      <Title>{preview.name}</Title>
+      <Muted>{preview.rows.length} records · CSV</Muted>
+      <View accessible accessibilityLabel={`${summary.added} new / ${summary.skipped} existing`}>
+        <Row>
+          <View style={styles.metric}><Text style={styles.metricValue}>{summary.added}</Text><Muted>New</Muted></View>
+          <View style={styles.metric}><Text style={styles.metricValue}>{summary.skipped}</Text><Muted>Existing</Muted></View>
+        </Row>
+      </View>
       {preview.rows.slice(0, 5).map(row => <Muted key={row.id}>{row.id} | {row.name} | {row.section}</Muted>)}
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
       <Button disabled={busy || !summary.added} onPress={async () => {
@@ -54,6 +62,6 @@ export default function RosterImport() {
       <Button secondary disabled={busy} onPress={() => setPreview(null)}>Cancel import</Button>
     </>}
     <ErrorText>{error}</ErrorText>
-    {!!result && <Text accessibilityRole="alert">{result}</Text>}
+    {!!result && <Text accessibilityRole="alert" style={{ color: colors.yellow, fontWeight: '700' }}>{result}</Text>}
   </Card>;
 }

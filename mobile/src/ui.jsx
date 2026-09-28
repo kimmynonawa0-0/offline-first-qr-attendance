@@ -1,30 +1,80 @@
 import { useState } from 'react';
-import { ImageBackground, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GREEN_GRADIENT, UNIVERSITY_NAME, UNIVERSITY_PHOTO } from './branding';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export const colors = { green: '#14734c', dark: '#06452f', light: '#dff2e5', purple: '#116342', ink: '#142e25', muted: '#5a7468', background: '#f1f6ee', red: '#b91c1c' };
+export const colors = {
+  yellow: '#FFD21A',
+  yellowDeep: '#E4AE00',
+  black: '#070909',
+  panel: '#111313',
+  panelRaised: '#181A1A',
+  line: '#343737',
+  paper: '#F4F1E8',
+  ink: '#F7F7F2',
+  muted: '#A9ACA8',
+  red: '#FF6B63',
+  green: '#FFD21A',
+  dark: '#070909',
+  light: '#24230F',
+  purple: '#FFD21A',
+  background: '#070909',
+};
+
+const displayFont = Platform.select({
+  ios: 'AvenirNextCondensed-Bold',
+  android: 'sans-serif-condensed',
+  web: 'Arial Narrow, sans-serif',
+});
+
+export function BrandMark({ compact = false }) {
+  return <View style={[styles.brandCrop, compact && styles.brandCropCompact]}>
+    <Image
+      accessibilityLabel="NORWEScan"
+      source={require('../assets/norwescan-wordmark.png')}
+      resizeMode="cover"
+      style={[styles.brandImage, compact && styles.brandImageCompact]}
+    />
+  </View>;
+}
 
 export function UniversityBanner() {
-  const content = <LinearGradient colors={UNIVERSITY_PHOTO ? ['#052e2080', '#052e20ed'] : GREEN_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-    <View style={styles.heroRing} />
-    <Text style={styles.heroEyebrow}>{UNIVERSITY_NAME.toUpperCase()}</Text>
-    <Text style={styles.heroTitle}>Every presence{ '\n' }counts.</Text>
-    <Text style={styles.heroCaption}>Your campus. Your community.</Text>
-  </LinearGradient>;
-  return <View style={styles.heroFrame}>{UNIVERSITY_PHOTO ? <ImageBackground source={UNIVERSITY_PHOTO} resizeMode="cover">{content}</ImageBackground> : content}</View>;
+  return <View style={styles.heroFrame}>
+    <LinearGradient colors={['#151817', '#090B0B', '#050606']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+      <View style={styles.heroGridOne} />
+      <View style={styles.heroGridTwo} />
+      <View style={styles.heroSlash} />
+      <BrandMark />
+      <Text style={styles.heroTitle}>Attendance,{ '\n' }<Text style={styles.heroAccent}>without the wait.</Text></Text>
+    </LinearGradient>
+  </View>;
 }
 
 export function Button({ children, onPress, secondary = false, purple = false, danger = false, disabled = false }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, { backgroundColor: danger ? colors.red : secondary ? '#e2e8f0' : purple ? colors.purple : colors.green }, (pressed || disabled) && { opacity: 0.6 }]}>
-    <Text style={[styles.buttonText, secondary && { color: colors.ink }]}>{children}</Text>
+  const primary = !secondary && !danger;
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityState={{ disabled }}
+    disabled={disabled}
+    onPress={onPress}
+    style={({ pressed }) => [
+      styles.button,
+      secondary && styles.buttonSecondary,
+      danger && styles.buttonDanger,
+      purple && styles.buttonPrimary,
+      (pressed || disabled) && styles.buttonMuted,
+    ]}
+  >
+    {primary
+      ? <LinearGradient colors={['#FFE22E', colors.yellow, '#F5BD00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.buttonFill}>
+        <Text style={styles.buttonText}>{children}</Text>
+      </LinearGradient>
+      : <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary, danger && styles.buttonTextDanger]}>{children}</Text>}
   </Pressable>;
 }
 
 export function LinkButton({ children, onPress, disabled }) {
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={styles.linkHit}>
+  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.linkHit, pressed && styles.buttonMuted]}>
     <Text style={styles.link}>{children}</Text>
   </Pressable>;
 }
@@ -33,11 +83,22 @@ export function Field({ label, value, onChangeText, password = false, email = fa
   const [visible, setVisible] = useState(false);
   return <View style={styles.field}>
     <Text style={styles.label}>{label}</Text>
-    <View style={styles.inputRow}>
-      <TextInput accessibilityLabel={label} value={value} onChangeText={onChangeText} editable={editable}
-        placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize={email || password ? 'none' : 'sentences'}
-        autoCorrect={!email && !password} keyboardType={email ? 'email-address' : 'default'}
-        secureTextEntry={password && !visible} style={[styles.input, !editable && { color: colors.muted }]} {...props} />
+    <View style={[styles.inputRow, !editable && styles.inputDisabled]}>
+      <TextInput
+        accessibilityLabel={label}
+        value={value}
+        onChangeText={onChangeText}
+        editable={editable}
+        placeholder={placeholder}
+        placeholderTextColor="#717572"
+        autoCapitalize={email || password ? 'none' : 'sentences'}
+        autoCorrect={!email && !password}
+        keyboardType={email ? 'email-address' : 'default'}
+        secureTextEntry={password && !visible}
+        selectionColor={colors.yellow}
+        style={[styles.input, !editable && { color: colors.muted }]}
+        {...props}
+      />
       {password && <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'} onPress={() => setVisible(!visible)} style={styles.passwordToggle}>
         <Text style={styles.link}>{visible ? 'Hide' : 'Show'}</Text>
       </Pressable>}
@@ -48,6 +109,7 @@ export function Field({ label, value, onChangeText, password = false, email = fa
 export function Card({ children, admin = false }) { return <View style={[styles.card, admin && styles.adminCard]}>{children}</View>; }
 export function Heading({ children }) { return <Text style={styles.heading}>{children}</Text>; }
 export function Title({ children }) { return <Text style={styles.title}>{children}</Text>; }
+export function Eyebrow({ children }) { return <Text style={styles.eyebrow}>{children}</Text>; }
 export function Muted({ children }) { return <Text style={styles.muted}>{children}</Text>; }
 export function ErrorText({ children }) { return children ? <Text accessibilityRole="alert" style={styles.error}>{children}</Text> : null; }
 export function Row({ children }) { return <View style={styles.row}>{children}</View>; }
@@ -57,7 +119,8 @@ export function ModalFrame({ title, onClose, children, busy = false }) {
     <SafeAreaView testID="app-modal" accessibilityViewIsModal style={styles.overlay}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
         <View style={styles.modalCard}>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 24 }}>
+          <View style={styles.modalGrip} />
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
             <Title>{title}</Title>
             {children}
             <LinkButton disabled={busy} onPress={onClose}>Close</LinkButton>
@@ -70,42 +133,74 @@ export function ModalFrame({ title, onClose, children, busy = false }) {
 
 export const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  container: { width: '100%', maxWidth: 650, alignSelf: 'center', flex: 1 },
-  header: { paddingHorizontal: 20, paddingVertical: 14, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  brand: { fontWeight: '800', fontSize: 19, color: colors.green },
-  badge: { color: colors.dark, backgroundColor: colors.light, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, fontSize: 12, fontWeight: '600' },
-  scroll: { padding: 20, paddingBottom: 30, gap: 16 },
-  card: { padding: 22, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dcfce7', gap: 14 },
-  adminCard: { borderTopWidth: 4, borderTopColor: colors.purple },
-  heroFrame: { borderRadius: 24, overflow: 'hidden' },
-  hero: { padding: 26, minHeight: 190, justifyContent: 'flex-end', overflow: 'hidden' },
-  heroRing: { position: 'absolute', width: 220, height: 220, borderRadius: 110, borderWidth: 35, borderColor: '#ffffff10', right: -70, top: -60 },
-  heroEyebrow: { color: '#c7e8d4', fontSize: 10, letterSpacing: 2.5, fontWeight: '700', marginBottom: 20 },
-  heroTitle: { color: '#fff', fontSize: 34, lineHeight: 38, fontWeight: '800', letterSpacing: -1 },
-  heroCaption: { color: '#d5efdc', fontSize: 13, marginTop: 12 },
-  heading: { color: colors.dark, fontSize: 25, fontWeight: '800', textAlign: 'center', marginBottom: 6 },
-  title: { color: colors.ink, fontSize: 20, fontWeight: '700', marginBottom: 8 },
-  muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  label: { color: colors.ink, fontSize: 14, fontWeight: '600', marginBottom: 6 },
-  field: { marginBottom: 14 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 14, backgroundColor: '#f8fafc' },
-  input: { flex: 1, minWidth: 0, padding: 15, fontSize: 16, color: colors.ink },
-  passwordToggle: { padding: 12 },
-  button: { padding: 16, borderRadius: 14, alignItems: 'center', justifyContent: 'center', minHeight: 50, marginVertical: 4 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  linkHit: { paddingVertical: 10, alignSelf: 'flex-start' },
-  link: { color: colors.green, fontWeight: '700', fontSize: 14 },
-  error: { color: colors.red, fontSize: 14, lineHeight: 21, marginVertical: 10 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
-  metric: { flexGrow: 1, flexBasis: '40%', backgroundColor: '#f8fafc', borderRadius: 12, padding: 16, alignItems: 'center' },
-  metricValue: { fontSize: 25, fontWeight: '800', color: colors.green },
-  nav: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0', padding: 12 },
-  navItem: { padding: 10, alignItems: 'center', gap: 4 },
-  navText: { color: colors.green, fontWeight: '700', fontSize: 12 },
-  overlay: { flex: 1, backgroundColor: 'rgba(5,20,10,0.8)', justifyContent: 'center', padding: 16 },
-  modalKeyboard: { flex: 1, justifyContent: 'center', width: '100%', maxWidth: 440, alignSelf: 'center' },
-  modalCard: { maxHeight: '100%', backgroundColor: '#fff', borderRadius: 24, overflow: 'hidden' },
-  qr: { alignItems: 'center', padding: 18, backgroundColor: '#fff', borderRadius: 14, gap: 12 },
-  notice: { padding: 14, backgroundColor: colors.light, borderBottomWidth: 1, borderBottomColor: '#bbf7d0' },
-  separator: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 10 },
+  container: { width: '100%', maxWidth: 650, alignSelf: 'center', flex: 1, backgroundColor: colors.background },
+  header: { minHeight: 62, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#0B0D0D', borderBottomWidth: 1, borderBottomColor: '#242727', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerLeading: { flexDirection: 'row', alignItems: 'center', minWidth: 0, flex: 1, gap: 10 },
+  headerBack: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  pageTitle: { color: colors.ink, fontFamily: displayFont, fontSize: 20, fontWeight: '800' },
+  brand: { fontWeight: '900', fontSize: 19, color: colors.yellow },
+  badge: { color: colors.yellow, backgroundColor: '#23230E', borderWidth: 1, borderColor: '#55521B', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, fontSize: 10, letterSpacing: 0.8, fontWeight: '800' },
+  scroll: { padding: 18, paddingBottom: 32, gap: 14 },
+  card: { padding: 18, borderRadius: 17, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, gap: 12 },
+  adminCard: { borderTopWidth: 3, borderTopColor: colors.yellow },
+  heroFrame: { borderRadius: 22, overflow: 'hidden', borderWidth: 1, borderColor: colors.line },
+  hero: { minHeight: 264, padding: 24, justifyContent: 'space-between', overflow: 'hidden' },
+  heroGridOne: { position: 'absolute', width: 220, height: 220, borderWidth: 1, borderColor: '#FFFFFF0A', transform: [{ rotate: '45deg' }], right: -80, top: -70 },
+  heroGridTwo: { position: 'absolute', width: 150, height: 150, borderWidth: 1, borderColor: '#FFFFFF0A', transform: [{ rotate: '45deg' }], right: -45, top: -35 },
+  heroSlash: { position: 'absolute', width: 28, height: 170, backgroundColor: colors.yellow, opacity: 0.95, transform: [{ rotate: '42deg' }], right: 18, top: -36 },
+  brandCrop: { width: 236, height: 52, overflow: 'hidden', justifyContent: 'center' },
+  brandCropCompact: { width: 172, height: 38 },
+  brandImage: { width: 236, height: 79 },
+  brandImageCompact: { width: 172, height: 57 },
+  heroTitle: { color: colors.ink, fontFamily: displayFont, fontSize: 38, lineHeight: 42, fontWeight: '900', letterSpacing: -0.8 },
+  heroAccent: { color: colors.yellow },
+  heading: { color: colors.ink, fontFamily: displayFont, fontSize: 30, lineHeight: 34, fontWeight: '900', marginBottom: 2 },
+  title: { color: colors.ink, fontFamily: displayFont, fontSize: 21, lineHeight: 25, fontWeight: '800', marginBottom: 2 },
+  eyebrow: { color: colors.yellow, fontSize: 10, lineHeight: 14, letterSpacing: 2, fontWeight: '800', textTransform: 'uppercase' },
+  muted: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+  label: { color: colors.paper, fontSize: 12, letterSpacing: 0.5, fontWeight: '700', marginBottom: 7 },
+  field: { marginBottom: 10 },
+  inputRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#464A48', borderRadius: 13, backgroundColor: '#151717' },
+  inputDisabled: { backgroundColor: '#101212' },
+  input: { flex: 1, minWidth: 0, paddingHorizontal: 15, paddingVertical: 14, fontSize: 16, color: colors.ink },
+  passwordToggle: { padding: 14 },
+  button: { borderRadius: 13, alignItems: 'stretch', justifyContent: 'center', minHeight: 54, marginVertical: 2, overflow: 'hidden' },
+  buttonFill: { minHeight: 54, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
+  buttonPrimary: { backgroundColor: colors.yellow },
+  buttonSecondary: { paddingHorizontal: 18, backgroundColor: '#101212', borderWidth: 1, borderColor: '#6B706D' },
+  buttonDanger: { paddingHorizontal: 18, backgroundColor: '#261212', borderWidth: 1, borderColor: '#74332F' },
+  buttonMuted: { opacity: 0.55 },
+  buttonText: { color: '#080909', fontFamily: displayFont, fontSize: 17, fontWeight: '900', textAlign: 'center', textTransform: 'uppercase' },
+  buttonTextSecondary: { color: colors.ink },
+  buttonTextDanger: { color: '#FF9B94' },
+  linkHit: { paddingVertical: 9, alignSelf: 'flex-start' },
+  link: { color: colors.yellow, fontWeight: '800', fontSize: 14 },
+  error: { color: '#FF8A82', backgroundColor: '#281413', borderRadius: 10, padding: 11, fontSize: 14, lineHeight: 20, marginVertical: 4 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 10 },
+  metric: { flexGrow: 1, flexBasis: '40%', minWidth: 120, backgroundColor: colors.panelRaised, borderWidth: 1, borderColor: colors.line, borderRadius: 13, padding: 15 },
+  metricValue: { fontFamily: displayFont, fontSize: 30, lineHeight: 33, fontWeight: '900', color: colors.yellow },
+  nav: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: '#0B0D0D', borderTopWidth: 1, borderTopColor: '#292C2B', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 10 },
+  navItem: { minWidth: 78, padding: 6, alignItems: 'center', gap: 3 },
+  navText: { color: colors.muted, fontWeight: '700', fontSize: 11 },
+  navTextActive: { color: colors.yellow },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.86)', justifyContent: 'flex-end', padding: 12 },
+  modalKeyboard: { width: '100%', maxWidth: 500, maxHeight: '92%', alignSelf: 'center', justifyContent: 'flex-end' },
+  modalCard: { maxHeight: '100%', backgroundColor: colors.panelRaised, borderWidth: 1, borderColor: colors.line, borderRadius: 24, overflow: 'hidden' },
+  modalGrip: { width: 48, height: 4, borderRadius: 2, backgroundColor: '#606461', alignSelf: 'center', marginTop: 10 },
+  modalContent: { padding: 22, gap: 10 },
+  qr: { alignItems: 'center', padding: 20, backgroundColor: colors.paper, borderRadius: 15, gap: 12 },
+  qrText: { color: '#111', fontWeight: '700' },
+  notice: { paddingHorizontal: 18, paddingVertical: 12, backgroundColor: '#2A2508', borderBottomWidth: 1, borderBottomColor: '#6A5D0A' },
+  noticeText: { color: '#FFF4B4', fontWeight: '700' },
+  separator: { height: 1, backgroundColor: colors.line, marginVertical: 8 },
+  screenLead: { paddingVertical: 5, gap: 4 },
+  greeting: { color: colors.ink, fontFamily: displayFont, fontSize: 20, fontWeight: '700' },
+  greetingName: { color: colors.yellow, fontFamily: displayFont, fontSize: 35, lineHeight: 39, fontWeight: '900' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.yellow },
+  localPill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#4A4D4B', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7 },
+  localPillText: { color: colors.paper, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  dataRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#292C2B' },
+  dataLabel: { color: colors.muted, flexShrink: 1 },
+  dataValue: { color: colors.ink, fontWeight: '700', textAlign: 'right' },
 });

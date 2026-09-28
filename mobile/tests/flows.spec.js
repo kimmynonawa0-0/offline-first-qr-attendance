@@ -16,7 +16,7 @@ async function changePassword(page) {
 async function logout(page) {
   await page.getByRole('button', { name: 'Logout', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await expect(page.getByText('Welcome back', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
 }
 async function chooseCSV(page, content) {
   const chooser = page.waitForEvent('filechooser');
@@ -34,15 +34,16 @@ test('unified login, required password change, CSV import and student offline lo
   await page.getByRole('button', { name: 'Log out', exact: true }).click();
   await login(page, '23-02330', 'BSCS-3C');
   await changePassword(page);
-  await expect(page.getByText('Admin control', { exact: true })).toBeVisible();
+  await expect(page.getByText('Organizer tools', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Import faculty roster', exact: true }).click();
   await chooseCSV(page, 'student_id,name,section\n00123,Juan Dela Cruz,BSCS-3C');
-  await expect(page.getByText('1 new / 0 existing', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('1 new / 0 existing', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Confirm import' }).click();
   await expect(page.getByText('Imported 1 students. Skipped 0 existing IDs.')).toBeVisible();
   await logout(page);
   await login(page, '00123', 'BSCS-3C');
   await changePassword(page);
-  await expect(page.getByText('Welcome, Student')).toBeVisible();
+  await expect(page.getByText('Student home', { exact: true })).toBeVisible();
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Enlarge QR' }).click();
   await expect(page.getByText('Student ID: 00123')).toBeVisible();
@@ -51,11 +52,11 @@ test('unified login, required password change, CSV import and student offline lo
   await login(page, '00123', 'BSCS-3C');
   await expect(page.getByText(/Invalid student ID or password/)).toBeVisible();
   await login(page, '00123', password);
-  await expect(page.getByText('Welcome, Student')).toBeVisible();
+  await expect(page.getByText('Student home', { exact: true })).toBeVisible();
   await context.setOffline(false);
   await page.reload();
   await login(page, '00123', password);
-  await expect(page.getByText('Welcome, Student')).toBeVisible();
+  await expect(page.getByText('Student home', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -63,6 +64,7 @@ test('invalid roster rejected, reimport skips IDs, organizer attendance still wo
   await page.goto('/');
   await login(page, '23-02330', 'BSCS-3C');
   await changePassword(page);
+  await page.getByRole('button', { name: 'Import faculty roster', exact: true }).click();
   await chooseCSV(page, 'student_id,name,section\n00123,Juan,');
   await expect(page.getByText(/Row 2: student ID, name, and section are required/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirm import' })).toHaveCount(0);
@@ -70,17 +72,18 @@ test('invalid roster rejected, reimport skips IDs, organizer attendance still wo
   await chooseCSV(page, csv);
   await page.getByRole('button', { name: 'Cancel import' }).click();
   await chooseCSV(page, csv);
-  await expect(page.getByText('1 new / 0 existing')).toBeVisible();
+  await expect(page.getByLabel('1 new / 0 existing')).toBeVisible();
   await page.getByRole('button', { name: 'Confirm import' }).click();
   await expect(page.getByText('Imported 1 students. Skipped 0 existing IDs.')).toBeVisible();
   await chooseCSV(page, csv);
-  await expect(page.getByText('0 new / 1 existing')).toBeVisible();
+  await expect(page.getByLabel('0 new / 1 existing')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirm import' })).toBeDisabled();
-  await page.getByRole('button', { name: '+ Create event', exact: true }).click();
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Create event', exact: true }).click();
   await page.getByLabel('Event name', { exact: true }).fill('General Assembly');
   await page.getByLabel('Location', { exact: true }).fill('Main Hall');
   await page.getByRole('button', { name: 'Create event', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage event', exact: true }).click();
   await page.getByRole('button', { name: 'Check myself in', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Already present', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Scan for this event', exact: true }).click();
