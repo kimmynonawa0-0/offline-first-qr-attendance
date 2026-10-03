@@ -11,10 +11,10 @@ import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
 import { checkIn, createEvent, deleteEvent, demoSync, localDate, methodLabel } from './model.mjs';
-import { BrandMark, Button, Card, colors, ErrorText, Eyebrow, Field, Heading, LinkButton, ModalFrame, Muted, Row, styles, Title } from './ui';
+import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
-const adminScreens = ['admin-home', 'create-event', 'event', 'history', 'roster-import', 'scanner', 'receipt'];
-const studentScreens = ['student-home', 'records'];
+const adminScreens = ['admin-home', 'admin-records', 'create-event', 'event', 'history', 'roster-import', 'scanner', 'receipt'];
+const studentScreens = ['student-home', 'records', 'profile'];
 const go = (page, params = {}) => router.push({ pathname: '/[page]', params: { page, ...params } });
 const replace = (page, params = {}) => router.replace({ pathname: '/[page]', params: { page, ...params } });
 
@@ -22,17 +22,19 @@ const pageTitles = {
   'change-password': 'Security',
   'student-home': 'Student home',
   records: 'Attendance records',
+  profile: 'Profile',
   'create-event': 'Create event',
   event: 'Event details',
   history: 'Events',
+  'admin-records': 'Attendance records',
   'roster-import': 'Review roster',
   scanner: 'Scan Attendance',
   receipt: 'Attendance recorded',
 };
 
 function HeaderBar({ screen, user, online, eventId }) {
-  const back = screen === 'records' ? ['student-home']
-    : ['create-event', 'history', 'roster-import', 'event'].includes(screen) ? ['admin-home']
+  const back = ['records', 'profile'].includes(screen) ? ['student-home']
+    : ['admin-records', 'create-event', 'history', 'roster-import', 'event'].includes(screen) ? ['admin-home']
       : ['scanner', 'receipt'].includes(screen) ? ['event', { eventId }]
         : null;
   const localMode = user?.role === 'admin';
@@ -64,6 +66,33 @@ function Metrics({ items }) {
 
 function EventSummary({ event }) {
   return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {event.time}</Muted></>;
+}
+
+function EventRow({ event, onPress }) {
+  const when = event.date === localDate() ? 'Today' : event.date;
+  const label = event.date === localDate() ? 'Current event' : 'Latest event';
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${event.name}`} onPress={onPress} style={({ pressed }) => [styles.eventRow, pressed && styles.buttonMuted]}>
+    <View style={styles.eventIcon}><Ionicons name="calendar-outline" size={23} color={colors.yellow} /></View>
+    <View style={styles.eventText}>
+      <Text style={styles.eventLabel}>{label} / {when}</Text>
+      <Text numberOfLines={2} style={styles.eventName}>{event.name}</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={20} color={colors.ink} />
+  </Pressable>;
+}
+
+function RecentActivity({ records, onSeeAll }) {
+  return <Card>
+    <View style={styles.activityHeader}><Title>Recent activity</Title><LinkButton onPress={onSeeAll}>See all</LinkButton></View>
+    {records.length ? records.map(record => <View key={record.id} style={styles.activityRow}>
+      <Ionicons name="document-text-outline" size={22} color={colors.paper} />
+      <View style={styles.activityText}>
+        <Text numberOfLines={1} style={styles.activityName}>{record.studentName} / {record.studentId}</Text>
+        <Text style={styles.activityTime}>{record.time}</Text>
+      </View>
+      <Text style={styles.activityStatus}>Checked in</Text>
+    </View>) : <Muted>No attendance records yet.</Muted>}
+  </Card>;
 }
 
 function RecordList({ records }) {
@@ -110,6 +139,7 @@ export default function AppScreen() {
   const focused = useIsFocused();
   const { data, user, setUser, loading, error: storageError, load, update, online, notice, setNotice } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
+  const [eventInfoOpen, setEventInfoOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -123,6 +153,9 @@ export default function AppScreen() {
     try { const result = await action(); after?.(result); }
     catch (e) { setError(e.message || 'Could not save. Please try again.'); }
     finally { lock.current = false; setBusy(false); }
+  }
+  function requestLogout() {
+    setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: () => { setUser(null); setConfirm(null); router.replace('/'); } });
   }
   if (loading || !data) return <SafeAreaView style={styles.safe}><View style={{ padding: 24 }}>
     <BrandMark />{loading ? <ActivityIndicator color={colors.yellow} /> : <><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
@@ -144,6 +177,7 @@ export default function AppScreen() {
   const pending = data.records.filter(r => !r.synced).length;
   const ownAttendance = event?.attendees.find(a => a.id === user?.id);
   const receipt = data.records.find(r => r.id === recordId);
+  const latestPersonalRecord = personalRecords[0];
 
   let content;
   if (authScreen) content = <LoginScreen
@@ -153,21 +187,32 @@ export default function AppScreen() {
     onLogout={() => { setUser(null); router.replace('/'); }} />;
   else if (screen === 'student-home') content = <>
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
-    <Card><Eyebrow>My attendance QR</Eyebrow><View style={styles.qr}><QRCode value={user.id} size={176} /><Text style={styles.qrText}>Scan at the event</Text></View>
-      <Button onPress={() => setQrOpen(true)}>Enlarge QR</Button></Card>
-    <Card><Eyebrow>Current event</Eyebrow>{currentEvent ? <EventSummary event={currentEvent} /> : <Muted>No event is available on this device yet.</Muted>}</Card>
-    <Card><Title>Attendance summary</Title><Metrics items={[
-      ['Present', personalRecords.filter(r => r.status === 'PRESENT').length],
-      ['Attendance rate', personalRecords.length ? `${Math.round(personalRecords.filter(r => r.status === 'PRESENT').length / personalRecords.length * 100)}%` : '0%'],
-    ]} /></Card>
+    <Pressable accessibilityRole="button" accessibilityLabel="Enlarge QR" onPress={() => setQrOpen(true)} style={({ pressed }) => [styles.attendanceQrCard, pressed && styles.buttonMuted]}>
+      <Text style={styles.attendanceQrTitle}>MY ATTENDANCE QR</Text>
+      <QRCode value={user.id} size={178} />
+      <Text style={styles.qrText}>Scan at the event</Text>
+    </Pressable>
+    {currentEvent ? <EventRow event={currentEvent} onPress={() => setEventInfoOpen(true)} /> : <Card><Muted>No event is available on this device yet.</Muted></Card>}
+    <Row>
+      <View style={styles.summaryTile}><Text style={styles.summaryLabel}>My check-ins</Text><Text style={styles.summaryValue}>{personalRecords.length}</Text><Text style={styles.summaryDetail}>Saved on this device</Text></View>
+      <View style={styles.summaryTile}><Text style={styles.summaryLabel}>Latest record</Text><Text numberOfLines={2} style={styles.summaryDetail}>{latestPersonalRecord?.event || 'No record yet'}</Text>{latestPersonalRecord && <Muted>{latestPersonalRecord.date} / {latestPersonalRecord.time}</Muted>}</View>
+    </Row>
   </>;
   else if (screen === 'records') content = <><Field label="Search event" value={query} onChangeText={setQuery} />
     <RecordList records={personalRecords.filter(r => `${r.event} ${r.date}`.toLowerCase().includes(query.toLowerCase()))} /></>;
+  else if (screen === 'profile') content = <Card>
+    <Ionicons name="person-circle-outline" size={48} color={colors.yellow} />
+    <Title>{user.name}</Title>
+    <View style={styles.dataRow}><Text style={styles.dataLabel}>Student ID</Text><Text style={styles.dataValue}>{user.id}</Text></View>
+    <View style={styles.dataRow}><Text style={styles.dataLabel}>Section</Text><Text style={styles.dataValue}>{user.section}</Text></View>
+    <Button secondary onPress={requestLogout}>Logout</Button>
+  </Card>;
   else if (screen === 'admin-home') content = <>
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
     <Metrics items={[["Present today", todayRecords.filter(r => r.status === 'PRESENT').length], ['Pending sync', pending]]} />
-    <Button disabled={!currentEvent} onPress={() => currentEvent && go('scanner', { eventId: currentEvent.id })}>{currentEvent ? 'Start scanning' : 'Create an event to scan'}</Button>
-    <Card admin><Eyebrow>Current event</Eyebrow>{currentEvent ? <><EventSummary event={currentEvent} /><Muted>{currentEvent.attendees.length} checked in</Muted><Button secondary onPress={() => go('event', { eventId: currentEvent.id })}>Manage event</Button></> : <Muted>No current event. Create one from Organizer tools.</Muted>}</Card>
+    <Button icon={currentEvent ? 'scan-outline' : 'calendar-outline'} onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : go('create-event')}>{currentEvent ? 'Start scanning' : 'Create event to scan'}</Button>
+    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>No current event. Create one from Organizer tools.</Muted></Card>}
+    <RecentActivity records={data.records.slice(0, 4)} onSeeAll={() => go('admin-records')} />
     <Card><Title>Organizer tools</Title>
       <Button onPress={() => go('create-event')}>Create event</Button>
       <Button secondary onPress={() => go('roster-import')}>Import faculty roster</Button>
@@ -175,8 +220,8 @@ export default function AppScreen() {
     </Card>
     {pending > 0 && <Card><Title>{pending} record{pending === 1 ? '' : 's'} waiting</Title><Muted>Attendance stays on this device until a connection is available.</Muted>
       <Button disabled={busy || !online} onPress={() => run(() => update(d => demoSync(d, user, online)), () => setNotice('Demo sync complete. No records were uploaded.'))}>Demo sync now</Button></Card>}
-    <Title>Recent activity</Title><RecordList records={data.records.slice(0, 4)} />
   </>;
+  else if (screen === 'admin-records') content = <RecordList records={data.records} />;
   else if (screen === 'roster-import') content = <RosterImport />;
   else if (screen === 'create-event') content = <EventForm busy={busy} onCancel={() => replace('admin-home')} onSave={fields => run(() => update(d => createEvent(d, user, fields, Crypto.randomUUID())), () => { replace('admin-home'); setNotice('Event created.'); })} />;
   else if (screen === 'history') content = <History events={data.events} onManage={id => go('event', { eventId: id })} />;
@@ -194,10 +239,21 @@ export default function AppScreen() {
     const id = Crypto.randomUUID();
     run(() => update(d => checkIn(d, user, eventId, person, method, id)), () => replace('receipt', { eventId, recordId: id }));
   }} />;
-  else if (screen === 'receipt' && receipt) content = <Card admin><Eyebrow>Saved locally</Eyebrow><Heading>ATTENDANCE RECORDED</Heading>
-    <Title>{receipt.studentName}</Title><Muted>Student ID: {receipt.studentId}</Muted><EventSummary event={{ ...receipt, name: receipt.event }} />
-    <Muted>{methodLabel(receipt.method)} / Saved locally</Muted><Button onPress={() => replace('event', { eventId: receipt.eventId })}>Done</Button>
-  </Card>;
+  else if (screen === 'receipt' && receipt) content = <>
+    <View style={styles.receiptPreview}>
+      <View style={styles.receiptQr}><QRCode value={receipt.studentId} size={140} /><Text style={styles.qrText}>{receipt.studentId}</Text></View>
+      <ScanCorners />
+    </View>
+    <View style={styles.successBanner}><Ionicons name="checkmark-circle" size={27} color={colors.black} /><Text style={styles.successText}>ATTENDANCE RECORDED</Text></View>
+    <Card>
+      <View style={styles.dataRow}><Text style={styles.dataLabel}>Student</Text><Text style={styles.dataValue}>{receipt.studentName} / {receipt.studentId}</Text></View>
+      <View style={styles.dataRow}><Text style={styles.dataLabel}>Event</Text><Text style={styles.dataValue}>{receipt.event}</Text></View>
+      <View style={styles.dataRow}><Text style={styles.dataLabel}>Time</Text><Text style={styles.dataValue}>{receipt.time}</Text></View>
+      <Muted>{methodLabel(receipt.method)} / Saved locally</Muted>
+    </Card>
+    <Button icon="scan-outline" onPress={() => replace('scanner', { eventId: receipt.eventId })}>Scan next</Button>
+    <Button secondary onPress={() => replace('event', { eventId: receipt.eventId })}>Done</Button>
+  </>;
   else content = <Card><Title>Page or event not found</Title><Button onPress={() => replace(home)}>Back to dashboard</Button></Card>;
 
   return <SafeAreaView style={styles.safe}>
@@ -213,11 +269,14 @@ export default function AppScreen() {
       {user && !mustChange && !['scanner', 'receipt'].includes(screen) && <View style={styles.nav}>
         <NavItem active={screen === home} icon={screen === home ? 'home' : 'home-outline'} label={user.role === 'admin' ? 'Dashboard' : 'Home'} onPress={() => replace(home)} />
         {user.role === 'student' && <NavItem active={screen === 'records'} icon={screen === 'records' ? 'list' : 'list-outline'} label="Records" onPress={() => replace('records')} />}
+        {user.role === 'student' && <NavItem active={screen === 'profile'} icon={screen === 'profile' ? 'person-circle' : 'person-circle-outline'} label="Profile" onPress={() => replace('profile')} />}
         {user.role === 'admin' && <NavItem active={screen === 'history'} icon={screen === 'history' ? 'calendar' : 'calendar-outline'} label="Events" onPress={() => replace('history')} />}
-        <NavItem icon="log-out-outline" label="Logout" onPress={() => setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: () => { setUser(null); setConfirm(null); router.replace('/'); } })} />
+        {user.role === 'admin' && <NavItem active={screen === 'admin-records'} icon={screen === 'admin-records' ? 'document-text' : 'document-text-outline'} label="Records" onPress={() => replace('admin-records')} />}
+        {user.role === 'admin' && <NavItem icon="log-out-outline" label="Logout" onPress={requestLogout} />}
       </View>}
     </View>
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
+    {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)}><EventSummary event={currentEvent} /></ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
   </SafeAreaView>;
 }

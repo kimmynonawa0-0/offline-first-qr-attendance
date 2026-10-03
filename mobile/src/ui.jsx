@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 export const colors = {
   yellow: '#FFD21A',
@@ -50,10 +51,12 @@ export function UniversityBanner() {
   </View>;
 }
 
-export function Button({ children, onPress, secondary = false, purple = false, danger = false, disabled = false }) {
+export function Button({ children, onPress, icon, secondary = false, purple = false, danger = false, disabled = false }) {
   const primary = !secondary && !danger;
+  const iconColor = primary ? colors.black : danger ? '#FF9B94' : colors.ink;
   return <Pressable
     accessibilityRole="button"
+    accessibilityLabel={typeof children === 'string' ? children : undefined}
     accessibilityState={{ disabled }}
     disabled={disabled}
     onPress={onPress}
@@ -67,9 +70,13 @@ export function Button({ children, onPress, secondary = false, purple = false, d
   >
     {primary
       ? <LinearGradient colors={['#FFE22E', colors.yellow, '#F5BD00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.buttonFill}>
+        {icon && <Ionicons testID="button-icon" name={icon} size={23} color={iconColor} />}
         <Text style={styles.buttonText}>{children}</Text>
       </LinearGradient>
-      : <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary, danger && styles.buttonTextDanger]}>{children}</Text>}
+      : <View style={styles.buttonFill}>
+        {icon && <Ionicons testID="button-icon" name={icon} size={23} color={iconColor} />}
+        <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary, danger && styles.buttonTextDanger]}>{children}</Text>
+      </View>}
   </Pressable>;
 }
 
@@ -113,6 +120,15 @@ export function Eyebrow({ children }) { return <Text style={styles.eyebrow}>{chi
 export function Muted({ children }) { return <Text style={styles.muted}>{children}</Text>; }
 export function ErrorText({ children }) { return children ? <Text accessibilityRole="alert" style={styles.error}>{children}</Text> : null; }
 export function Row({ children }) { return <View style={styles.row}>{children}</View>; }
+
+export function ScanCorners() {
+  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View style={[styles.scanCorner, styles.scanTopLeft]} />
+    <View style={[styles.scanCorner, styles.scanTopRight]} />
+    <View style={[styles.scanCorner, styles.scanBottomLeft]} />
+    <View style={[styles.scanCorner, styles.scanBottomRight]} />
+  </View>;
+}
 
 export function ModalFrame({ title, onClose, children, busy = false }) {
   return <Modal visible transparent animationType="fade" onRequestClose={() => !busy && onClose()}>
@@ -165,7 +181,7 @@ export const styles = StyleSheet.create({
   input: { flex: 1, minWidth: 0, paddingHorizontal: 15, paddingVertical: 14, fontSize: 16, color: colors.ink },
   passwordToggle: { padding: 14 },
   button: { borderRadius: 13, alignItems: 'stretch', justifyContent: 'center', minHeight: 54, marginVertical: 2, overflow: 'hidden' },
-  buttonFill: { minHeight: 54, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
+  buttonFill: { minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'center' },
   buttonPrimary: { backgroundColor: colors.yellow },
   buttonSecondary: { paddingHorizontal: 18, backgroundColor: '#101212', borderWidth: 1, borderColor: '#6B706D' },
   buttonDanger: { paddingHorizontal: 18, backgroundColor: '#261212', borderWidth: 1, borderColor: '#74332F' },
@@ -201,6 +217,39 @@ export const styles = StyleSheet.create({
   localPill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#4A4D4B', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7 },
   localPillText: { color: colors.paper, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
   dataRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#292C2B' },
-  dataLabel: { color: colors.muted, flexShrink: 1 },
-  dataValue: { color: colors.ink, fontWeight: '700', textAlign: 'right' },
+  dataLabel: { color: colors.muted, minWidth: 65 },
+  dataValue: { color: colors.ink, flex: 1, fontWeight: '700', textAlign: 'right' },
+  eventRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 13, paddingHorizontal: 16, paddingVertical: 13, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: 15 },
+  eventIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#24230F' },
+  eventText: { flex: 1, gap: 3 },
+  eventLabel: { color: colors.muted, fontSize: 12 },
+  eventName: { color: colors.ink, fontSize: 16, fontWeight: '800' },
+  activityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.line },
+  activityText: { flex: 1, gap: 2 },
+  activityName: { color: colors.ink, fontSize: 13, fontWeight: '700' },
+  activityTime: { color: colors.muted, fontSize: 12 },
+  activityStatus: { color: colors.yellow, fontSize: 11, fontWeight: '700' },
+  attendanceQrCard: { alignItems: 'center', gap: 12, padding: 20, borderRadius: 17, backgroundColor: colors.paper },
+  attendanceQrTitle: { color: colors.black, fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
+  summaryTile: { flex: 1, minWidth: 120, minHeight: 126, backgroundColor: colors.panelRaised, borderWidth: 1, borderColor: colors.line, borderRadius: 14, padding: 15, gap: 6 },
+  summaryLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.1, textTransform: 'uppercase' },
+  summaryValue: { color: colors.yellow, fontFamily: displayFont, fontSize: 34, fontWeight: '900' },
+  summaryDetail: { color: colors.ink, fontSize: 13, fontWeight: '700' },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: colors.panelRaised, borderRadius: 12 },
+  rosterHeader: { flexDirection: 'row', gap: 8, padding: 9, backgroundColor: '#242727', borderRadius: 8 },
+  rosterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 9, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
+  rosterId: { flex: 1, color: colors.ink, fontSize: 12 },
+  rosterName: { flex: 1.5, color: colors.ink, fontSize: 12 },
+  rosterStatus: { flex: 0.8, color: colors.yellow, fontSize: 12 },
+  scanFrame: { height: 320, overflow: 'hidden', borderRadius: 14, backgroundColor: '#1C1F1E' },
+  scanCorner: { position: 'absolute', width: 36, height: 36, borderColor: colors.yellow },
+  scanTopLeft: { top: 24, left: 24, borderTopWidth: 4, borderLeftWidth: 4 },
+  scanTopRight: { top: 24, right: 24, borderTopWidth: 4, borderRightWidth: 4 },
+  scanBottomLeft: { bottom: 24, left: 24, borderBottomWidth: 4, borderLeftWidth: 4 },
+  scanBottomRight: { bottom: 24, right: 24, borderBottomWidth: 4, borderRightWidth: 4 },
+  receiptPreview: { alignItems: 'center', justifyContent: 'center', minHeight: 230, backgroundColor: '#1C1F1E', borderRadius: 14 },
+  receiptQr: { padding: 15, backgroundColor: colors.paper, borderRadius: 9, alignItems: 'center', gap: 8 },
+  successBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.yellow, borderRadius: 12, minHeight: 60, padding: 10 },
+  successText: { color: colors.black, fontFamily: displayFont, fontSize: 20, fontWeight: '900' },
 });

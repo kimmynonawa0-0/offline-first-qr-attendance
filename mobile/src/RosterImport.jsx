@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { Platform, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
-import { Button, Card, colors, ErrorText, Eyebrow, Muted, Row, styles, Title } from './ui';
+import { Ionicons } from '@expo/vector-icons';
+import { Button, Card, colors, ErrorText, Muted, Row, styles, Title } from './ui';
 import { useApp } from './state';
 import { importRoster, MAX_ROSTER_BYTES, parseRoster, rosterSummary } from './roster.mjs';
 
@@ -14,6 +15,7 @@ export default function RosterImport() {
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const summary = preview ? rosterSummary(data, preview.rows) : null;
+  const existingIds = new Set([...data.students, ...data.admins].map(account => account.id));
   async function choose() {
     setError(''); setResult(''); setPreview(null);
     try {
@@ -34,17 +36,25 @@ export default function RosterImport() {
       <Muted>New students use their section as a temporary password. Existing accounts stay unchanged.</Muted>
     </>}
     {preview && <>
-      <Eyebrow>File selected</Eyebrow>
-      <Title>{preview.name}</Title>
-      <Muted>{preview.rows.length} records · CSV</Muted>
+      <View style={styles.fileRow}>
+        <Ionicons name="document-outline" size={29} color={colors.ink} />
+        <View style={{ flex: 1 }}><Title>{preview.name}</Title><Muted>{preview.rows.length} records / CSV</Muted></View>
+      </View>
       <View accessible accessibilityLabel={`${summary.added} new / ${summary.skipped} existing`}>
         <Row>
           <View style={styles.metric}><Text style={styles.metricValue}>{summary.added}</Text><Muted>New</Muted></View>
           <View style={styles.metric}><Text style={styles.metricValue}>{summary.skipped}</Text><Muted>Existing</Muted></View>
         </Row>
       </View>
-      {preview.rows.slice(0, 5).map(row => <Muted key={row.id}>{row.id} | {row.name} | {row.section}</Muted>)}
+      <View style={styles.rosterHeader}>
+        <Text style={styles.rosterId}>Student ID</Text><Text style={styles.rosterName}>Name</Text><Text style={styles.rosterStatus}>Status</Text>
+      </View>
+      {preview.rows.slice(0, 5).map(row => <View key={row.id} style={styles.rosterRow}>
+        <Text style={styles.rosterId}>{row.id}</Text><Text numberOfLines={2} style={styles.rosterName}>{row.name}</Text>
+        <Text style={styles.rosterStatus}>{existingIds.has(row.id) ? 'Existing' : 'New'}</Text>
+      </View>)}
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
+      <View style={styles.localPill}><Ionicons name="alert-circle-outline" size={18} color={colors.yellow} /><Text style={styles.localPillText}>Existing accounts stay unchanged.</Text></View>
       <Button disabled={busy || !summary.added} onPress={async () => {
         if (lock.current) return;
         lock.current = true; setBusy(true); setError('');

@@ -14,6 +14,9 @@ async function changePassword(page) {
   await page.getByRole('button', { name: 'Save password and continue' }).click();
 }
 async function logout(page) {
+  if (!await page.getByRole('button', { name: 'Logout', exact: true }).count()) {
+    await page.getByRole('button', { name: 'Profile', exact: true }).click();
+  }
   await page.getByRole('button', { name: 'Logout', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
@@ -35,6 +38,9 @@ test('unified login, required password change, CSV import and student offline lo
   await login(page, '23-02330', 'BSCS-3C');
   await changePassword(page);
   await expect(page.getByText('Organizer tools', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create event to scan', exact: true }).click();
+  await expect(page.getByLabel('Event name', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Import faculty roster', exact: true }).click();
   await chooseCSV(page, 'student_id,name,section\n00123,Juan Dela Cruz,BSCS-3C');
   await expect(page.getByLabel('1 new / 0 existing', { exact: true })).toBeVisible();
@@ -83,7 +89,14 @@ test('invalid roster rejected, reimport skips IDs, organizer attendance still wo
   await page.getByLabel('Event name', { exact: true }).fill('General Assembly');
   await page.getByLabel('Location', { exact: true }).fill('Main Hall');
   await page.getByRole('button', { name: 'Create event', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage event', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Current event: General Assembly', exact: true })).toBeVisible();
+  const startScanning = page.getByRole('button', { name: 'Start scanning', exact: true });
+  await expect(startScanning.getByTestId('button-icon')).toBeVisible();
+  await startScanning.click();
+  await expect(page.getByText('Scan Attendance', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Current event: General Assembly', exact: true }).click();
   await page.getByRole('button', { name: 'Check myself in', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Already present', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Scan for this event', exact: true }).click();
@@ -91,10 +104,19 @@ test('invalid roster rejected, reimport skips IDs, organizer attendance still wo
   await page.getByLabel('Student ID', { exact: true }).fill('00123');
   await page.getByLabel('Full name', { exact: true }).fill('Juan Dela Cruz');
   await page.getByRole('button', { name: 'Mark present', exact: true }).click();
-  await expect(page.getByText('ATTENDANCE RECORDED')).toBeVisible();
+  await expect(page.getByText('ATTENDANCE RECORDED', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Scan next', exact: true }).click();
+  await expect(page.getByText('Scan Attendance', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'See all', exact: true }).click();
+  await expect(page.getByText('Attendance records', { exact: true })).toBeVisible();
   await page.reload();
   await login(page, '00123', 'BSCS-3C');
   await changePassword(page);
+  await page.getByRole('button', { name: 'Current event: General Assembly', exact: true }).click();
+  await expect(page.getByText('Event details', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Records', exact: true }).click();
   await expect(page.getByText('General Assembly', { exact: true })).toBeVisible();
   await expect(page.getByText('Demo Organizer (23-02330)', { exact: true })).toHaveCount(0);

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, Linking, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused } from 'expo-router';
-import { Button, Card, colors, ErrorText, Field, Muted, Title } from './ui';
+import { Button, Card, ErrorText, Field, Muted, ScanCorners, styles, Title } from './ui';
 
 export default function Scanner({ data, onSave, busy }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -27,9 +27,10 @@ export default function Scanner({ data, onSave, busy }) {
   return <Card admin>
     {!person && <>
       <Muted>Position the student QR inside the camera preview.</Muted>
-      {permission?.granted && !error && active && focused ? <View style={{ height: 320, borderRadius: 14, overflow: 'hidden', borderWidth: 2, borderColor: colors.yellow }}>
+      {permission?.granted && !error && active && focused ? <View style={styles.scanFrame}>
         <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned}
           onMountError={() => setError('Camera unavailable. You can use a demo scan.')} />
+        <ScanCorners />
       </View> : <>
         <Muted>Camera permission is needed for QR scanning.</Muted>
         <Button onPress={async () => {
