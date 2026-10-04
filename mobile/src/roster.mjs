@@ -54,16 +54,20 @@ export function validateRoster(rows) {
 
 export function parseRoster(text) {
   requireValue(typeof text === 'string' && text.length <= MAX_ROSTER_BYTES, 'CSV must be no larger than 1 MB.');
-  const rows = csvRows(text.replace(/^\uFEFF/, ''));
-  requireValue(rows.length > 1, 'CSV needs a header and at least one student.');
+  return parseRosterTable(csvRows(text.replace(/^\uFEFF/, '')));
+}
+
+export function parseRosterTable(rows) {
+  requireValue(Array.isArray(rows) && rows.length > 1, 'File needs a header and at least one student.');
   const aliases = { id: 'id', studentid: 'id', name: 'name', fullname: 'name', section: 'section', email: 'email' };
-  const headers = rows[0].map(h => h.toLowerCase().replace(/[ _-]/g, ''));
+  const headers = rows[0].map(h => String(h ?? '').toLowerCase().replace(/[ _-]/g, ''));
   requireValue(!headers.some(h => ['role', 'admin', 'isadmin', 'password'].includes(h)), 'Do not include roles or passwords. This file creates students only.');
   const keys = headers.map(h => aliases[h] || null);
-  for (const key of ['id', 'name', 'section']) requireValue(keys.filter(k => k === key).length === 1, `CSV needs exactly one ${key} column.`);
-  requireValue(keys.filter(k => k === 'email').length <= 1, 'CSV has duplicate email columns.');
+  for (const key of ['id', 'name', 'section']) requireValue(keys.filter(k => k === key).length === 1, `File needs exactly one ${key} column.`);
+  requireValue(keys.filter(k => k === 'email').length <= 1, 'File has duplicate email columns.');
   return validateRoster(rows.slice(1).map((cells, i) => {
     requireValue(cells.length === headers.length, `Row ${i + 2}: column count does not match the header.`);
+    requireValue(typeof cells[keys.indexOf('id')] === 'string', `Row ${i + 2}: format Student ID cells as text in Excel to preserve leading zeros.`);
     return Object.fromEntries(keys.flatMap((key, j) => key ? [[key, cells[j]]] : []));
   }));
 }

@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initialData, login, changePassword, createEvent, deleteEvent, checkIn, demoSync } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
+import { parseSpreadsheet } from './spreadsheet.mjs';
+import * as XLSX from '@e965/xlsx';
 import { createRepository, migrateData, STORAGE_KEY } from './storage.mjs';
 
 const password = 'my private passphrase';
@@ -63,6 +65,32 @@ test('invalid CSVs fail as a whole with actionable errors', () => {
     assert.throws(() => parseRoster(text), Error, text);
   }
   assert.throws(() => parseRoster('x'.repeat(1024 * 1024 + 1)), /1 MB/);
+});
+
+test('Excel workbooks use the same roster rules and preserve text IDs', () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Student ID', 'Full Name', 'Section', 'Email'],
+    ['00123', 'Juan Dela Cruz', 'BSCS-3C', 'juan@example.com'],
+  ]), 'Faculty roster');
+  for (const bookType of ['xlsx', 'xls']) {
+    const bytes = XLSX.write(workbook, { type: 'array', bookType });
+    assert.deepEqual(parseSpreadsheet(bytes), rows);
+  }
+  assert.deepEqual(importRoster(ready(), admin, parseSpreadsheet(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }))).students[0].id, '00123');
+});
+
+test('Excel rejects numeric IDs, missing columns, duplicate IDs, and malformed files', () => {
+  function workbookBuffer(table) {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(table), 'Sheet1');
+    return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+  }
+  assert.throws(() => parseSpreadsheet(workbookBuffer([['id', 'name', 'section'], [123, 'Juan', 'BSCS-3C']])), /format Student ID cells as text/);
+  assert.throws(() => parseSpreadsheet(workbookBuffer([['id', 'name'], ['00123', 'Juan']])), /section column/);
+  assert.throws(() => parseSpreadsheet(workbookBuffer([['id', 'name', 'section'], ['00123', 'Juan', 'S'], ['00123', 'Maria', 'S']])), /duplicate student ID/);
+  assert.throws(() => parseSpreadsheet(new ArrayBuffer(1024 * 1024 + 1)), /1 MB/);
+  assert.throws(() => parseSpreadsheet(new Uint8Array([1, 2, 3]).buffer), /Could not read|header/);
 });
 
 test('import is idempotent, student-only, and preserves existing accounts and changed passwords', () => {

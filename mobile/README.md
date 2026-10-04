@@ -28,13 +28,13 @@ its password and attendance. A conflicting existing ID stops migration without o
 Import `examples/faculty-roster.csv` from the dashboard. Log out, then log in as
 **2024-00123** / **BSCS-3C** and choose a new password to enter the student dashboard.
 Both roles use the same login page. The saved account determines the role;
-CSV files cannot grant admin access.
+Roster files cannot grant admin access.
 
 ## Faculty roster
 
-Export a faculty spreadsheet as **CSV UTF-8 (.csv)**. Direct `.xlsx`/`.xls`
-imports are not supported in this version. Format ID cells as text before export
-so Excel does not discard leading zeros.
+Import a **CSV UTF-8 (.csv)** or **Excel (.xlsx, .xls)** roster. For Excel,
+put the roster in the first worksheet and format Student ID cells as text
+before entering IDs so Excel does not discard leading zeros.
 
 ```csv
 student_id,name,section,email
@@ -126,8 +126,9 @@ any images. Shared control colors are in `src/ui.jsx`.
 | `src/app/` | Expo Router entry and screen routes |
 | `src/AppScreen.jsx` | Dashboards, events, records, receipts, and navigation |
 | `src/Auth.jsx` | Unified login, account help, required password change |
-| `src/RosterImport.jsx` | CSV picker, preview, and import confirmation |
-| `src/roster.mjs` | CSV validation and student-only account creation |
+| `src/RosterImport.jsx` | Roster picker, preview, and import confirmation |
+| `src/spreadsheet.mjs` | Excel workbook reader |
+| `src/roster.mjs` | Shared roster validation and student-only account creation |
 | `src/Scanner.jsx` | Camera permission, scanning, and manual demo entry |
 | `src/ui.jsx` | Shared native controls and existing visual theme |
 | `src/model.mjs` | Account, password, event, and attendance rules |

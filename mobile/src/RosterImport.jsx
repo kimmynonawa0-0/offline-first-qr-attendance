@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, colors, ErrorText, Muted, Row, styles, Title } from './ui';
 import { useApp } from './state';
 import { importRoster, MAX_ROSTER_BYTES, parseRoster, rosterSummary } from './roster.mjs';
+import { parseSpreadsheet } from './spreadsheet.mjs';
 
 export default function RosterImport() {
   const { data, user, update } = useApp();
@@ -19,26 +20,35 @@ export default function RosterImport() {
   async function choose() {
     setError(''); setResult(''); setPreview(null);
     try {
-      const selected = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false, copyToCacheDirectory: true, base64: false });
+      // Android grants access to the picked content URI; its Expo Go cache copy can be unreadable.
+      const selected = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false, copyToCacheDirectory: Platform.OS !== 'android', base64: false });
       if (selected.canceled) return;
       const asset = selected.assets[0];
-      if (!/\.csv$/i.test(asset.name)) throw new Error('Export the spreadsheet as CSV UTF-8 (.csv) first. Excel workbooks are not supported yet.');
-      if (asset.size > MAX_ROSTER_BYTES) throw new Error('CSV must be no larger than 1 MB.');
-      const text = Platform.OS === 'web' ? await asset.file.text() : await new File(asset.uri).text();
-      setPreview({ name: asset.name, rows: parseRoster(text) });
-    } catch (e) { setError(e.message || 'Could not read this file. Please select a CSV.'); }
+      const extension = asset.name?.match(/\.(csv|xlsx|xls)$/i)?.[1]?.toLowerCase();
+      if (!extension) throw new Error('Choose a .csv, .xlsx, or .xls roster.');
+      if (asset.size > MAX_ROSTER_BYTES) throw new Error('Roster file must be no larger than 1 MB.');
+      const file = Platform.OS === 'web' ? (asset.file || await (await fetch(asset.uri)).blob()) : new File(asset.uri);
+      if ((asset.size ?? file.size) > MAX_ROSTER_BYTES) throw new Error('Roster file must be no larger than 1 MB.');
+      const rows = extension === 'csv' ? parseRoster(await file.text()) : parseSpreadsheet(await file.arrayBuffer());
+      setPreview({ name: asset.name, rows });
+    } catch (e) {
+      setError(/Missing 'READ' permission/.test(e.message || '')
+        ? 'Cannot read this file. Select it again from your phone\'s Files app.'
+        : e.message || 'Could not read this file. Please select a CSV or Excel roster.');
+    }
   }
   return <Card>
     {!preview && <>
-      <Title>Choose a CSV roster</Title>
-      <Muted>Required columns: student_id, name, and section. Email is optional.</Muted>
-      <Button disabled={busy} onPress={choose}>Choose CSV file</Button>
+      <Title>Choose a faculty roster</Title>
+      <Muted>CSV or Excel (.xlsx, .xls). Required: student_id, name, section. Email is optional.</Muted>
+      <Muted>For Excel, put the roster on the first sheet and format student IDs as text.</Muted>
+      <Button disabled={busy} onPress={choose}>Choose roster file</Button>
       <Muted>New students use their section as a temporary password. Existing accounts stay unchanged.</Muted>
     </>}
     {preview && <>
       <View style={styles.fileRow}>
         <Ionicons name="document-outline" size={29} color={colors.ink} />
-        <View style={{ flex: 1 }}><Title>{preview.name}</Title><Muted>{preview.rows.length} records / CSV</Muted></View>
+        <View style={{ flex: 1 }}><Title>{preview.name}</Title><Muted>{preview.rows.length} records</Muted></View>
       </View>
       <View accessible accessibilityLabel={`${summary.added} new / ${summary.skipped} existing`}>
         <Row>

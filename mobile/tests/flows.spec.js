@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { Buffer } = require('node:buffer');
+const XLSX = require('@e965/xlsx');
 
 const password = 'a private passphrase';
 async function login(page, id, pass) {
@@ -21,10 +22,13 @@ async function logout(page) {
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
 }
-async function chooseCSV(page, content) {
+async function chooseFile(page, name, mimeType, buffer) {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Choose CSV file' }).click();
-  await (await chooser).setFiles({ name: 'faculty.csv', mimeType: 'text/csv', buffer: Buffer.from(content) });
+  await page.getByRole('button', { name: 'Choose roster file' }).click();
+  await (await chooser).setFiles({ name, mimeType, buffer });
+}
+async function chooseCSV(page, content) {
+  await chooseFile(page, 'faculty.csv', 'text/csv', Buffer.from(content));
 }
 
 test('unified login, required password change, CSV import and student offline login', async ({ page, context }) => {
@@ -120,4 +124,20 @@ test('invalid roster rejected, reimport skips IDs, organizer attendance still wo
   await page.getByRole('button', { name: 'Records', exact: true }).click();
   await expect(page.getByText('General Assembly', { exact: true })).toBeVisible();
   await expect(page.getByText('Demo Organizer (23-02330)', { exact: true })).toHaveCount(0);
+});
+
+test('admin can preview and import an Excel roster through the file picker', async ({ page }) => {
+  await page.goto('/');
+  await login(page, '23-02330', 'BSCS-3C');
+  await changePassword(page);
+  await page.getByRole('button', { name: 'Import faculty roster', exact: true }).click();
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Student ID', 'Full Name', 'Section'], ['00123', 'Juan Dela Cruz', 'BSCS-3C'],
+  ]), 'Roster');
+  await chooseFile(page, 'faculty.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    Buffer.from(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })));
+  await expect(page.getByLabel('1 new / 0 existing')).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm import' }).click();
+  await expect(page.getByText('Imported 1 students. Skipped 0 existing IDs.')).toBeVisible();
 });
