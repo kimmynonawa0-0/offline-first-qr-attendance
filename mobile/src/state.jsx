@@ -1,13 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { createRepository } from './storage.mjs';
+import { createLocalRepository } from './local-repository';
 
 const Context = createContext(null);
 export const useApp = () => useContext(Context);
 
 export function AppProvider({ children }) {
-  const [repository] = useState(() => createRepository(AsyncStorage));
+  const [repository] = useState(createLocalRepository);
   const [data, setData] = useState(null);
   const [user, setUser] = useState(null);
   const [error, setError] = useState('');

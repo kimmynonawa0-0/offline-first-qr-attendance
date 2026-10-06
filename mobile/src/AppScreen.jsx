@@ -10,7 +10,8 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { checkIn, createEvent, deleteEvent, demoSync, localDate, methodLabel } from './model.mjs';
+import { checkIn, createEvent, deleteEvent, localDate, methodLabel } from './model.mjs';
+import { markSynced, syncToServer } from './remote-sync.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'create-event', 'event', 'history', 'roster-import', 'scanner', 'receipt'];
@@ -101,7 +102,7 @@ function RecordList({ records }) {
     <Text style={{ color: colors.ink, fontWeight: '700' }}>{record.studentName} ({record.studentId})</Text>
     <Muted>{record.date} at {record.time}</Muted>
     <Muted>{methodLabel(record.method)}</Muted>
-    <Text style={{ color: colors.yellow, fontWeight: '800' }}>PRESENT / {record.synced ? 'Demo synced' : 'Saved locally'}</Text>
+    <Text style={{ color: colors.yellow, fontWeight: '800' }}>PRESENT / {record.synced ? 'Synced' : 'Saved locally'}</Text>
   </Card>) : <Muted>No attendance records yet.</Muted>;
 }
 
@@ -144,6 +145,8 @@ export default function AppScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncPassword, setSyncPassword] = useState('');
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   const home = user?.role === 'admin' ? 'admin-home' : 'student-home';
@@ -218,8 +221,8 @@ export default function AppScreen() {
       <Button secondary onPress={() => go('roster-import')}>Import faculty roster</Button>
       <Button secondary onPress={() => go('history')}>View events</Button>
     </Card>
-    {pending > 0 && <Card><Title>{pending} record{pending === 1 ? '' : 's'} waiting</Title><Muted>Attendance stays on this device until a connection is available.</Muted>
-      <Button disabled={busy || !online} onPress={() => run(() => update(d => demoSync(d, user, online)), () => setNotice('Demo sync complete. No records were uploaded.'))}>Demo sync now</Button></Card>}
+    <Card><Title>Sync to server</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting. Upload rosters and events too when the server is available.</Muted>
+      <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
   </>;
   else if (screen === 'admin-records') content = <RecordList records={data.records} />;
   else if (screen === 'roster-import') content = <RosterImport />;
@@ -278,5 +281,18 @@ export default function AppScreen() {
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)}><EventSummary event={currentEvent} /></ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
+    {syncOpen && <ModalFrame title="Upload to server" onClose={() => { setSyncOpen(false); setSyncPassword(''); }} busy={busy}>
+      <Muted>Enter the organizer password configured on the server. Rosters, events, and attendance will be uploaded.</Muted>
+      <Field label="Server organizer password" password value={syncPassword} onChangeText={setSyncPassword} />
+      <ErrorText>{error}</ErrorText>
+      <Button disabled={busy || !syncPassword} onPress={() => run(async () => {
+        const result = await syncToServer(data, user, syncPassword, process.env.EXPO_PUBLIC_API_URL);
+        await update(current => markSynced(current, result.acceptedRecordIds));
+        return result;
+      }, result => {
+        setSyncPassword(''); setSyncOpen(false);
+        setNotice(`Upload complete. ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
+      })}>{busy ? 'Uploading...' : 'Upload data'}</Button>
+    </ModalFrame>}
   </SafeAreaView>;
 }

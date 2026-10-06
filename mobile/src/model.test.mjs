@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialData, login, changePassword, createEvent, deleteEvent, checkIn, demoSync } from './model.mjs';
+import { initialData, login, changePassword, createEvent, deleteEvent, checkIn } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -46,7 +46,7 @@ test('long section cannot be reused as a password; pending admins cannot access 
   const user = login(data, '23-02330', 'COMPUTER-SCIENCE-3C');
   assert.throws(() => changePassword(data, user, 'computer-science-3c', 'computer-science-3c'), /not your section/);
   for (const action of [() => importRoster(data, user, rows), () => createEvent(data, user, event, 'e'),
-    () => deleteEvent(data, user, 'e'), () => checkIn(data, user, 'e', user, 'organizer', 'r'), () => demoSync(data, user, true)]) {
+    () => deleteEvent(data, user, 'e'), () => checkIn(data, user, 'e', user, 'organizer', 'r')]) {
     assert.throws(action, /Change your password/);
   }
 });
@@ -136,8 +136,7 @@ test('attendance still validates event dates and prevents duplicate organizer/sc
   assert.throws(() => checkIn(data, { ...admin, role: 'student' }, 'second', admin, 'demo', 'bad'), /Log in/);
   const deleted = deleteEvent(data, admin, 'second');
   assert.equal(deleted.records.length, 1);
-  assert.throws(() => demoSync(deleted, admin, false), /offline/);
-  assert.equal(demoSync(deleted, admin, true).records[0].synced, true);
+  assert.equal(deleted.records[0].synced, false);
 });
 
 test('saved demo ID is renamed once, preserving passwords and attendance references', async () => {

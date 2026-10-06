@@ -1,6 +1,6 @@
 # NORWE-SCAN mobile prototype
 
-React Native + Expo attendance prototype with a university-green gradient theme.
+React Native + Expo attendance app with the CCIS yellow and black theme.
 The mobile account flow follows the revised faculty-roster design, not the old signup flow.
 The browser prototype is retained for comparison. This is a native interface,
 not a WebView wrapper.
@@ -12,7 +12,7 @@ compatible with Expo SDK 57.
 
 ```sh
 cd mobile
-npm install
+npm ci
 npx expo start
 ```
 
@@ -76,8 +76,12 @@ does not block the demo scan option.
 
 ## Local data and prototype boundaries
 
-Accounts, events, and attendance persist in AsyncStorage under
-`norwe-scan-mobile-v1` (data schema version 2). Updates save a complete snapshot before reporting success.
+On Android and iOS, accounts, events, attendees, and attendance persist in
+SQLite (`norwescan.db`). On first launch after upgrading, the app imports the
+existing AsyncStorage snapshot under `norwe-scan-mobile-v1` into SQLite in one
+transaction. The old snapshot is kept for recovery. If migration fails, it is
+not overwritten and startup shows an error. Browser preview continues to use
+AsyncStorage because Expo SQLite web support is experimental.
 Existing version-1 accounts keep their current passwords for their next login,
 then must change them. Existing events and receipts are retained. If an ID was
 stored as both a student and an admin, the admin account/credentials take
@@ -95,17 +99,19 @@ QR generation, event management, local login, and attendance capture work withou
 an API connection after the app is loaded. Test a standalone APK in airplane mode
 to validate cold launch independently of the Expo development server.
 
-This migration does not add a backend, database server, real email delivery,
-encrypted credentials, signed QR codes, or cross-device synchronization. Passwords
+The optional PostgreSQL sync API is in `../server/`; see its README for setup.
+It uploads roster profiles, events, and pending attendance receipts and marks
+only server-confirmed receipts as synced. It does not yet provide student login
+or downloads to other devices. Passwords
 remain plain text demo data. A section is a shared, guessable temporary password;
 forced change does not verify student identity or make this production-secure.
 Production needs trusted account provisioning, server-side authorization,
 secure password storage, and a safer initial activation process. Use demo data only.
 
-Demo sync changes local flags; it uploads nothing. A student using a different
-phone will not receive imported accounts or attendance records until real sync exists.
-Demonstrate import and student login on the same device for now. There is no
-shared database or mobile account-import path for students yet.
+An organizer can upload to a shared database after configuring
+`EXPO_PUBLIC_API_URL`, but a student using a different phone cannot yet receive
+imported accounts or attendance records. Demonstrate student login on the same
+device for now.
 Student records are scoped to their ID on the current device. Event deletion
 retains historical attendance receipts. Self-check-in is labeled as organizer
 attendance and is available to any logged-in admin managing the event.
@@ -132,7 +138,9 @@ any images. Shared control colors are in `src/ui.jsx`.
 | `src/Scanner.jsx` | Camera permission, scanning, and manual demo entry |
 | `src/ui.jsx` | Shared native controls and existing visual theme |
 | `src/model.mjs` | Account, password, event, and attendance rules |
-| `src/storage.mjs` | Serialized local persistence |
+| `src/storage.mjs` | Legacy AsyncStorage migration and browser persistence |
+| `src/sqlite-storage.mjs` | Native SQLite tables, migration, and serialized writes |
+| `src/remote-sync.mjs` | Server upload and confirmation handling |
 | `src/state.jsx` | Shared data/session state and connectivity |
 
 ## Checks

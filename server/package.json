@@ -1,0 +1,12 @@
+{
+  "name": "norwescan-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test src/*.test.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
+}

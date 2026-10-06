@@ -1,0 +1,3 @@
+fix the present pending sync ui (too bright)
+start scanning must have the icon scanner
+current event must be like the admin-flow-v3

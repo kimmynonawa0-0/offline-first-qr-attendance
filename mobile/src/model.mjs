@@ -88,10 +88,4 @@ export function checkIn(data, user, eventId, person, method, recordId, now = new
   };
 }
 
-export function demoSync(data, user, online) {
-  requireAdmin(data, user);
-  requireValue(online, 'You are offline. Records are saved on this device.');
-  return { ...data, records: data.records.map(r => ({ ...r, synced: true })) };
-}
-
 export const methodLabel = method => method === 'organizer' ? 'Organizer check-in' : method === 'demo' ? 'Demo scan' : 'QR scan';
