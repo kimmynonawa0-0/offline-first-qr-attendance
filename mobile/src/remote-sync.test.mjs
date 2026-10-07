@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeStudentPasswordRemotely, loginStudentRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+import { changeStudentPasswordRemotely, downloadStudentAttendance, loginStudentRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
 
 test('remote sync sends only pending receipts and confirms only accepted IDs', async () => {
   const data = { students: [{ id: '1', name: 'A', section: 'S', password: 'private' }],
@@ -53,4 +53,18 @@ test('remote student sign-in and password changes call the server API', async ()
   await changeStudentPasswordRemotely({ id: '001', role: 'student' }, 'S', 'long secure password', 'https://api.test', fetchImpl);
   assert.equal(calls, 2);
   await assert.rejects(loginStudentRemotely('001', 'S', '', fetchImpl), /EXPO_PUBLIC_API_URL/);
+});
+
+test('student attendance refresh posts credentials and returns server records', async () => {
+  let sent;
+  const records = [{ id: 'r1', studentId: '001', eventId: 'e1' }];
+  const result = await downloadStudentAttendance({ id: '001', role: 'student' }, 'private password', 'https://api.test',
+    async (url, options) => {
+      sent = { url, body: JSON.parse(options.body) };
+      return { ok: true, json: async () => ({ records }) };
+    });
+  assert.equal(sent.url, 'https://api.test/student/attendance');
+  assert.deepEqual(sent.body, { id: '001', password: 'private password' });
+  assert.deepEqual(result, records);
+  await assert.rejects(downloadStudentAttendance({ id: 'admin', role: 'admin' }, 'pw', 'https://api.test'), /student/);
 });

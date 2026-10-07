@@ -10,8 +10,8 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { checkIn, createEvent, deleteEvent, localDate, methodLabel } from './model.mjs';
-import { markSynced, syncToServer } from './remote-sync.mjs';
+import { checkIn, createEvent, deleteEvent, localDate, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { downloadStudentAttendance, markSynced, syncToServer } from './remote-sync.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'create-event', 'event', 'history', 'roster-import', 'scanner', 'receipt'];
@@ -157,6 +157,13 @@ export default function AppScreen() {
     catch (e) { setError(e.message || 'Could not save. Please try again.'); }
     finally { lock.current = false; setBusy(false); }
   }
+  async function refreshStudentAttendance() {
+    const student = data.students.find(account => account.id === user?.id);
+    if (!student?.password) throw new Error('Sign in online on this device before refreshing attendance.');
+    const records = await downloadStudentAttendance(user, student.password, process.env.EXPO_PUBLIC_API_URL);
+    await update(current => mergeStudentAttendance(current, user.id, records));
+    return records.length;
+  }
   function requestLogout() {
     setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: () => { setUser(null); setConfirm(null); router.replace('/'); } });
   }
@@ -200,8 +207,14 @@ export default function AppScreen() {
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>My check-ins</Text><Text style={styles.summaryValue}>{personalRecords.length}</Text><Text style={styles.summaryDetail}>Saved on this device</Text></View>
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>Latest record</Text><Text numberOfLines={2} style={styles.summaryDetail}>{latestPersonalRecord?.event || 'No record yet'}</Text>{latestPersonalRecord && <Muted>{latestPersonalRecord.date} / {latestPersonalRecord.time}</Muted>}</View>
     </Row>
+    <Button secondary disabled={busy || !online} onPress={() => run(refreshStudentAttendance, count => setNotice(`Attendance refreshed. ${count} synced record(s) found.`))}>
+      {busy ? 'Refreshing...' : online ? 'Refresh my attendance' : 'Connect to refresh attendance'}
+    </Button>
   </>;
   else if (screen === 'records') content = <><Field label="Search event" value={query} onChangeText={setQuery} />
+    <Button secondary disabled={busy || !online} onPress={() => run(refreshStudentAttendance, count => setNotice(`Attendance refreshed. ${count} synced record(s) found.`))}>
+      {busy ? 'Refreshing...' : online ? 'Refresh from server' : 'Offline / showing saved records'}
+    </Button>
     <RecordList records={personalRecords.filter(r => `${r.event} ${r.date}`.toLowerCase().includes(query.toLowerCase()))} /></>;
   else if (screen === 'profile') content = <Card>
     <Ionicons name="person-circle-outline" size={48} color={colors.yellow} />

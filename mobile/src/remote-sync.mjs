@@ -32,6 +32,13 @@ export async function changeStudentPasswordRemotely(user, currentPassword, newPa
   return postJson(apiUrl, '/auth/password', { id: user.id, currentPassword, newPassword }, fetchImpl);
 }
 
+export async function downloadStudentAttendance(user, password, apiUrl, fetchImpl = fetch) {
+  if (user?.role !== 'student') throw new Error('Log in as a student to refresh attendance.');
+  const result = await postJson(apiUrl, '/student/attendance', { id: user.id, password }, fetchImpl);
+  if (!Array.isArray(result.records)) throw new Error('Server returned an invalid attendance history.');
+  return result.records;
+}
+
 export async function syncToServer(data, user, password, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'admin') throw new Error('Log in as an organizer to sync.');
   if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');

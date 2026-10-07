@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn } from './model.mjs';
+import { cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeStudentAttendance } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -32,6 +32,20 @@ test('remote student login caches a sanitized student account without changing o
   assert.equal(login(data, '00123', 'BSCS-3C').role, 'student');
   assert.equal(data.students[0].mustChangePassword, true);
   assert.throws(() => cacheRemoteStudent(data, { id: '23-02330', name: 'Wrong', section: 'S', role: 'student' }, 'S'), /organizer/);
+});
+
+test('student attendance refresh merges only that student\'s records and preserves local history', () => {
+  const data = cacheRemoteStudent(ready(), { id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C', role: 'student' }, 'BSCS-3C');
+  data.records = [{ id: 'local', studentId: '00123', eventId: 'e0', recordedAt: '2026-09-25T10:00:00.000Z', synced: false }];
+  const next = mergeStudentAttendance(data, '00123', [
+    { id: 'remote', studentId: '00123', eventId: 'e1', recordedAt: '2026-09-26T10:00:00.000Z' },
+  ]);
+  assert.deepEqual(next.records.map(record => record.id), ['remote', 'local']);
+  assert.equal(next.records[0].synced, true);
+  assert.equal(next.records[1].synced, false);
+  assert.throws(() => mergeStudentAttendance(data, '00123', [
+    { id: 'other', studentId: 'another-student', eventId: 'e1', recordedAt: '2026-09-26T10:00:00.000Z' },
+  ]), /invalid attendance record/i);
 });
 
 for (const role of ['student', 'admin']) test(`${role} must replace the temporary password without changing identity`, () => {

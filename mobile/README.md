@@ -113,9 +113,11 @@ phones need a reachable API endpoint; for internet testing this must be a public
 HTTPS deployment. The source includes the PostgreSQL API, but does not deploy it
 or create a hosted database automatically. Student attendance records still
 remain on the scanning device until the organizer uploads them through Sync.
-Student records are scoped to their ID on the current device. Event deletion
-retains historical attendance receipts. Self-check-in is labeled as organizer
-attendance and is available to any logged-in admin managing the event.
+Students can refresh their own server-synced history from Home or Records while
+online; refreshed records are cached in SQLite for offline viewing. The API
+verifies the student's ID and password and returns only records for that ID.
+Event deletion retains historical attendance receipts. Self-check-in is labeled
+as organizer attendance and is available to any logged-in admin managing the event.
 
 ## University branding
 

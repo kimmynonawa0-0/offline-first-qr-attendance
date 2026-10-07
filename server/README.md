@@ -4,6 +4,8 @@ This Node API stores faculty roster profiles, events, and attendance in PostgreS
 It accepts authenticated roster uploads, verifies student login, and saves student
 passwords as salted hashes. The mobile app still keeps an encrypted-in-transit,
 local SQLite copy for offline use; the API is the shared source for new logins.
+Students can request their own synced attendance history using their ID and
+password. The response is limited to records matching that student ID.
 
 ## Local setup
 
@@ -46,6 +48,9 @@ Uploads are transactional and idempotent. A record with the same event and
 student as an existing record is reported as a conflict and stays pending on
 the device. Existing student profiles and event rows are not overwritten by
 later uploads. Deleting an event locally does not delete its remote history.
+Students can refresh records from `/student/attendance`; returned attendance is
+cached on their device for offline viewing. The server stores each scan's
+original date and time for history display.
 
 This is a prototype account system. The API verifies passwords on each login
 without issuing long-lived sessions. Student passwords remain in local SQLite

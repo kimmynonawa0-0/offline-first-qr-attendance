@@ -54,9 +54,10 @@ export async function saveBatch(client, body) {
         [event.id, event.name, event.location, event.date, event.time]);
     }
     for (const record of body.records) {
-      await client.query(`INSERT INTO attendance (id, student_id, student_name, event_id, event_name, location, recorded_at, method)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
-      [record.id, record.studentId, record.studentName, record.eventId, record.event || '', record.location || '', record.recordedAt, record.method || 'scan']);
+      await client.query(`INSERT INTO attendance (id, student_id, student_name, event_id, event_name, location, recorded_at, attendance_date, attendance_time, method)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`,
+      [record.id, record.studentId, record.studentName, record.eventId, record.event || '', record.location || '',
+        record.recordedAt, record.date || null, record.time || null, record.method || 'scan']);
       const found = await client.query('SELECT id FROM attendance WHERE event_id = $1 AND student_id = $2', [record.eventId, record.studentId]);
       if (found.rows[0]?.id === record.id) acceptedRecordIds.push(record.id);
       else conflictRecordIds.push(record.id);

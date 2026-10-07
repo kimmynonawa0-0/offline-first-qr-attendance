@@ -37,6 +37,19 @@ export function cacheRemoteStudent(data, account, password) {
     : [...data.students, student] };
 }
 
+export function mergeStudentAttendance(data, studentId, remoteRecords) {
+  requireValue(data.students.some(student => student.id === studentId), 'This student account is not saved on this device.');
+  requireValue(Array.isArray(remoteRecords), 'The server returned an invalid attendance history.');
+  const records = new Map(data.records.map(record => [record.id, record]));
+  for (const record of remoteRecords) {
+    requireValue(record?.studentId === studentId && typeof record.id === 'string' && record.id
+      && typeof record.eventId === 'string' && record.eventId && typeof record.recordedAt === 'string' && record.recordedAt,
+      'The server returned an invalid attendance record.');
+    records.set(record.id, { ...record, synced: true });
+  }
+  return { ...data, records: [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || '')) };
+}
+
 export function sessionFor(account, role) {
   const { id, name, email, section, mustChangePassword } = account;
   return { id, name, email, section, mustChangePassword, role };
