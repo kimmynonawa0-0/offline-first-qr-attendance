@@ -1,0 +1,48 @@
+# Repository files outside the Expo application
+.git/
+.agents/
+.codex/
+.aws/
+prototype/
+server/
+note.txt
+
+# Mobile dependencies and generated output
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/dist-android/
+mobile/web-build/
+mobile/android/
+mobile/ios/
+
+# Local configuration and credentials
+mobile/.env*.local
+mobile/*.jks
+mobile/*.p8
+mobile/*.p12
+mobile/*.key
+mobile/*.mobileprovision
+mobile/*.pem
+
+# Files that are not used by the APK
+mobile/design/
+mobile/examples/
+mobile/tests/
+mobile/test-results/
+mobile/playwright-report/
+mobile/src/*.test.mjs
+mobile/playwright.config.js
+mobile/AGENTS.md
+mobile/README.md
+mobile/LICENSE
+
+# Logs and caches
+mobile/.kotlin/
+mobile/.metro-health-check*
+mobile/npm-debug.*
+mobile/yarn-debug.*
+mobile/yarn-error.*
+mobile/*.tsbuildinfo
+mobile/.DS_Store
+mobile/.eas-inspect/

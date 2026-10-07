@@ -1,14 +1,17 @@
 import { useRef, useState } from 'react';
 import { Button, Card, ErrorText, Field, Heading, LinkButton, ModalFrame, Muted, UniversityBanner } from './ui';
-import { changePassword, login } from './model.mjs';
+import { cacheRemoteStudent, changePassword, login } from './model.mjs';
+import { changeStudentPasswordRemotely, loginStudentRemotely } from './remote-sync.mjs';
 import { useApp } from './state';
 
 export function LoginScreen({ onLogin }) {
-  const { data } = useApp();
+  const { data, update } = useApp();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [help, setHelp] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
   return <>
     <UniversityBanner />
     <Card>
@@ -16,10 +19,32 @@ export function LoginScreen({ onLogin }) {
       <Field label="Password" value={password} onChangeText={setPassword} password />
       <LinkButton onPress={() => setHelp(true)}>Forgot password?</LinkButton>
       <ErrorText>{error}</ErrorText>
-      <Button onPress={() => {
-        try { const user = login(data, identifier, password); setPassword(''); onLogin(user); }
-        catch (e) { setError(e.message); }
-      }}>LOG IN</Button>
+      <Button disabled={busy} onPress={async () => {
+        if (lock.current) return;
+        lock.current = true; setBusy(true); setError('');
+        try {
+          const localAdmin = data.admins.some(account => account.id === identifier.trim());
+          if (localAdmin) {
+            const account = login(data, identifier, password);
+            setPassword(''); onLogin(account); return;
+          }
+          const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+          if (apiUrl) {
+            try {
+              const remote = await loginStudentRemotely(identifier, password, apiUrl);
+              const next = await update(current => cacheRemoteStudent(current, remote, password));
+              setPassword(''); onLogin(login(next, remote.id, password)); return;
+            } catch (remoteError) {
+              if (!remoteError.message.startsWith('Could not reach the attendance server.')) throw remoteError;
+              try { const account = login(data, identifier, password); setPassword(''); onLogin(account); return; }
+              catch { throw remoteError; }
+            }
+          }
+          const account = login(data, identifier, password);
+          setPassword(''); onLogin(account);
+        } catch (e) { setError(e.message); }
+        finally { lock.current = false; setBusy(false); }
+      }}>{busy ? 'Signing in...' : 'LOG IN'}</Button>
       <Muted>Use the account provided by your faculty. On your first login, your section is your temporary password.</Muted>
     </Card>
     {help && <ModalFrame title="Account help" onClose={() => setHelp(false)}>
@@ -30,7 +55,8 @@ export function LoginScreen({ onLogin }) {
 }
 
 export function ChangePasswordScreen({ onComplete, onLogout }) {
-  const { user, update } = useApp();
+  const { data, user, update } = useApp();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -39,6 +65,7 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
   return <Card>
     <Heading>Choose your password</Heading>
     <Muted>Your section password is temporary. Create one with at least 12 characters that is not your section.</Muted>
+    {user.role === 'student' && process.env.EXPO_PUBLIC_API_URL && <Field label="Current password" password value={currentPassword} onChangeText={setCurrentPassword} />}
     <Field label="New password" password value={password} onChangeText={setPassword} />
     <Field label="Confirm new password" password value={confirm} onChangeText={setConfirm} />
     <ErrorText>{error}</ErrorText>
@@ -46,6 +73,15 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
       if (lock.current) return;
       lock.current = true; setBusy(true); setError('');
       try {
+        if (user.role === 'student' && process.env.EXPO_PUBLIC_API_URL) {
+          const candidate = changePassword(data, user, password, confirm);
+          await changeStudentPasswordRemotely(user, currentPassword, password, process.env.EXPO_PUBLIC_API_URL);
+          const next = await update(() => candidate);
+          const account = login(next, user.id, password);
+          setCurrentPassword('');
+          onComplete(account);
+          return;
+        }
         const next = await update(data => changePassword(data, user, password, confirm));
         onComplete(login(next, user.id, password));
       } catch (e) { setError(e.message || 'Could not save your password. Try again.'); }

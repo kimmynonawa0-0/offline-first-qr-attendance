@@ -64,7 +64,7 @@ flow has been removed; the left-aligned Forgot password link shows account help.
 - Mandatory first-login password change for both roles, persisted across app restarts.
 - Student dashboard, locally generated personal QR, enlarged QR, current event, and searchable personal attendance records.
 - Admin dashboard, today's attendance, event creation/deletion, history with expandable attendees, and recent attendance.
-- Event camera QR scanning, student confirmation, demo scan fallback, duplicate prevention, and attendance receipt.
+- Event camera QR scanning, student confirmation against the imported roster, duplicate prevention, and attendance receipt.
 - Organizer self-check-in and personal QR without account switching.
 - Network indicator, pending local records, and explicitly labeled simulated sync.
 
@@ -72,7 +72,7 @@ Date entry uses `YYYY-MM-DD`; time uses 24-hour `HH:MM`.
 QR codes contain a student ID, like the browser prototype. An unknown ID can be
 scanned, but the organizer must enter its name before recording attendance.
 Camera access is requested only from the scanner screen. A denied permission
-does not block the demo scan option.
+blocks scanning until access is granted; there is no simulated/manual scan path.
 
 ## Local data and prototype boundaries
 
@@ -99,19 +99,20 @@ QR generation, event management, local login, and attendance capture work withou
 an API connection after the app is loaded. Test a standalone APK in airplane mode
 to validate cold launch independently of the Expo development server.
 
-The optional PostgreSQL sync API is in `../server/`; see its README for setup.
-It uploads roster profiles, events, and pending attendance receipts and marks
-only server-confirmed receipts as synced. It does not yet provide student login
-or downloads to other devices. Passwords
-remain plain text demo data. A section is a shared, guessable temporary password;
-forced change does not verify student identity or make this production-secure.
-Production needs trusted account provisioning, server-side authorization,
-secure password storage, and a safer initial activation process. Use demo data only.
+The PostgreSQL API is in `../server/`; see its README for setup. Roster upload
+requires internet and organizer server credentials. It creates student accounts
+in shared PostgreSQL with salted hashes of their section as temporary passwords.
+Students use the same API to sign in and change their password, then their account
+is cached in SQLite for offline login on that phone. Student passwords are stored
+locally as plaintext in this prototype; use test data only. A shared, guessable
+section password does not verify identity. Production needs secure local
+credential storage, rate limiting, account recovery, and stronger activation.
 
-An organizer can upload to a shared database after configuring
-`EXPO_PUBLIC_API_URL`, but a student using a different phone cannot yet receive
-imported accounts or attendance records. Demonstrate student login on the same
-device for now.
+Configure `EXPO_PUBLIC_API_URL` in `mobile/.env.local` and restart Expo. All
+phones need a reachable API endpoint; for internet testing this must be a public
+HTTPS deployment. The source includes the PostgreSQL API, but does not deploy it
+or create a hosted database automatically. Student attendance records still
+remain on the scanning device until the organizer uploads them through Sync.
 Student records are scoped to their ID on the current device. Event deletion
 retains historical attendance receipts. Self-check-in is labeled as organizer
 attendance and is available to any logged-in admin managing the event.
@@ -140,7 +141,7 @@ any images. Shared control colors are in `src/ui.jsx`.
 | `src/model.mjs` | Account, password, event, and attendance rules |
 | `src/storage.mjs` | Legacy AsyncStorage migration and browser persistence |
 | `src/sqlite-storage.mjs` | Native SQLite tables, migration, and serialized writes |
-| `src/remote-sync.mjs` | Server upload and confirmation handling |
+| `src/remote-sync.mjs` | Roster upload, student login/password change, and attendance sync |
 | `src/state.jsx` | Shared data/session state and connectivity |
 
 ## Checks

@@ -1,4 +1,4 @@
-import { scryptSync, timingSafeEqual } from 'node:crypto';
+import { scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
 
 export function passwordHash(password, salt) {
   return scryptSync(password, salt, 64).toString('hex');
@@ -6,6 +6,21 @@ export function passwordHash(password, salt) {
 
 export function passwordMatches(password, salt, expected) {
   const actual = Buffer.from(passwordHash(password, salt), 'hex');
+  const stored = Buffer.from(expected, 'hex');
+  return actual.length === stored.length && timingSafeEqual(actual, stored);
+}
+
+export function passwordHashAsync(password, salt) {
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, 64, (error, key) => {
+      if (error) reject(error);
+      else resolve(key.toString('hex'));
+    });
+  });
+}
+
+export async function passwordMatchesAsync(password, salt, expected) {
+  const actual = Buffer.from(await passwordHashAsync(password, salt), 'hex');
   const stored = Buffer.from(expected, 'hex');
   return actual.length === stored.length && timingSafeEqual(actual, stored);
 }

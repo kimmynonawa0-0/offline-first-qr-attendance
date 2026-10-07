@@ -10,6 +10,7 @@ dist-android/
 test-results/
 playwright-report/
 web-build/
+builds/
 expo-env.d.ts
 
 # Native
