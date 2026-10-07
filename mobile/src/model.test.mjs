@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initialData, login, changePassword, createEvent, deleteEvent, checkIn } from './model.mjs';
+import { cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -24,6 +24,14 @@ test('one login detects the stored role by ID, never email or caller-selected ro
   assert.equal('password' in login(data, '00123', 'BSCS-3C'), false);
   for (const id of ['juan@example.com', 'unknown']) assert.throws(() => login(data, id, 'BSCS-3C'), /Invalid/);
   assert.throws(() => login(data, '00123', 'wrong'), /Invalid/);
+});
+
+test('remote student login caches a sanitized student account without changing organizer role', () => {
+  const data = cacheRemoteStudent(ready(), { id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C',
+    role: 'student', mustChangePassword: true }, 'BSCS-3C');
+  assert.equal(login(data, '00123', 'BSCS-3C').role, 'student');
+  assert.equal(data.students[0].mustChangePassword, true);
+  assert.throws(() => cacheRemoteStudent(data, { id: '23-02330', name: 'Wrong', section: 'S', role: 'student' }, 'S'), /organizer/);
 });
 
 for (const role of ['student', 'admin']) test(`${role} must replace the temporary password without changing identity`, () => {
@@ -128,15 +136,18 @@ test('attendance still validates event dates and prevents duplicate organizer/sc
   const base = ready();
   assert.throws(() => createEvent(base, admin, { ...event, date: '2026-02-30' }, 'e'), /valid date/);
   assert.throws(() => createEvent(base, admin, { ...event, time: '25:00' }, 'e'), /valid time/);
-  let data = createEvent(createEvent(base, admin, event, 'first'), admin, event, 'second');
-  data = checkIn(data, admin, 'second', { id: 'spoof', name: 'Wrong' }, 'organizer', 'record');
-  assert.equal(data.records[0].studentId, admin.id);
+  let data = importRoster(createEvent(createEvent(base, admin, event, 'first'), admin, event, 'second'), admin, rows);
+  data = checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'record');
+  assert.equal(data.records[0].studentId, '00123');
   assert.equal(data.events[0].attendees.length, 0);
-  assert.throws(() => checkIn(data, admin, 'second', admin, 'scan', 'duplicate'), /already present/);
-  assert.throws(() => checkIn(data, { ...admin, role: 'student' }, 'second', admin, 'demo', 'bad'), /Log in/);
+  assert.throws(() => checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'duplicate'), /already present/);
+  data = checkIn(data, admin, 'first', { id: 'ignored', name: 'Ignored' }, 'organizer', 'organizer-record');
+  assert.equal(data.records[0].studentId, admin.id);
+  assert.throws(() => checkIn(data, { ...admin, role: 'student' }, 'second', admin, 'scan', 'bad'), /Log in/);
+  assert.throws(() => checkIn(data, admin, 'second', { id: 'not-rostered', name: 'Unknown' }, 'scan', 'bad'), /not in the imported student roster/);
   const deleted = deleteEvent(data, admin, 'second');
-  assert.equal(deleted.records.length, 1);
-  assert.equal(deleted.records[0].synced, false);
+  assert.equal(deleted.records.length, 2);
+  assert.ok(deleted.records.every(record => !record.synced));
 });
 
 test('saved demo ID is renamed once, preserving passwords and attendance references', async () => {

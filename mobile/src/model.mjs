@@ -22,6 +22,21 @@ export function login(data, identifier, password) {
   return sessionFor(account, role);
 }
 
+export function cacheRemoteStudent(data, account, password) {
+  requireValue(account?.role === 'student' && account.id && account.name && account.section,
+    'The server returned an invalid student account.');
+  requireValue(!data.admins.some(admin => admin.id === account.id),
+    'This student ID is already registered as an organizer on this device.');
+  const student = {
+    id: account.id, name: account.name, section: account.section, email: account.email || '',
+    password, mustChangePassword: Boolean(account.mustChangePassword),
+  };
+  const exists = data.students.some(item => item.id === student.id);
+  return { ...data, students: exists
+    ? data.students.map(item => item.id === student.id ? { ...item, ...student } : item)
+    : [...data.students, student] };
+}
+
 export function sessionFor(account, role) {
   const { id, name, email, section, mustChangePassword } = account;
   return { id, name, email, section, mustChangePassword, role };
@@ -67,10 +82,12 @@ export function deleteEvent(data, user, id) {
 
 export function checkIn(data, user, eventId, person, method, recordId, now = new Date()) {
   requireAdmin(data, user);
-  requireValue(['organizer', 'scan', 'demo'].includes(method), 'Invalid check-in method.');
+  requireValue(['organizer', 'scan'].includes(method), 'Invalid check-in method.');
   const event = data.events.find(e => e.id === eventId);
   requireValue(event, 'Event no longer exists.');
   const student = method === 'organizer' ? user : person;
+  if (method === 'scan') requireValue(data.students.some(account => account.id === student?.id),
+    'This QR code is not in the imported student roster.');
   const id = student.id.trim();
   const name = student.name.trim();
   requireValue(id && name, 'Enter the student ID and full name.');
@@ -88,4 +105,4 @@ export function checkIn(data, user, eventId, person, method, recordId, now = new
   };
 }
 
-export const methodLabel = method => method === 'organizer' ? 'Organizer check-in' : method === 'demo' ? 'Demo scan' : 'QR scan';
+export const methodLabel = method => method === 'organizer' ? 'Organizer check-in' : 'QR scan';
