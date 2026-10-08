@@ -3,18 +3,17 @@ import { Platform, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Card, colors, ErrorText, Field, Muted, Row, styles, Title } from './ui';
+import { Button, Card, colors, ErrorText, Muted, Row, styles, Title } from './ui';
 import { useApp } from './state';
 import { importRoster, MAX_ROSTER_BYTES, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import { uploadRosterToServer } from './remote-sync.mjs';
 
 export default function RosterImport() {
-  const { data, user, update } = useApp();
+  const { data, user, update, adminSession } = useApp();
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
-  const [serverPassword, setServerPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const summary = preview ? rosterSummary(data, preview.rows) : null;
@@ -67,14 +66,14 @@ export default function RosterImport() {
       </View>)}
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
       <Muted>Internet is required. The roster is uploaded to PostgreSQL before it is saved on this phone.</Muted>
-      <Field label="Organizer server password" password value={serverPassword} onChangeText={setServerPassword} />
+      {!adminSession || adminSession.id !== user.id ? <Muted>Sign in online as an organizer before uploading a roster.</Muted> : null}
       <View style={styles.localPill}><Ionicons name="alert-circle-outline" size={18} color={colors.yellow} /><Text style={styles.localPillText}>Existing accounts and passwords stay unchanged.</Text></View>
-      <Button disabled={busy || !serverPassword} onPress={async () => {
+      <Button disabled={busy || adminSession?.id !== user.id} onPress={async () => {
         if (lock.current) return;
         lock.current = true; setBusy(true); setError('');
         let uploadedToServer = false;
         try {
-          const remoteCounts = await uploadRosterToServer(preview.rows, user, serverPassword, process.env.EXPO_PUBLIC_API_URL);
+          const remoteCounts = await uploadRosterToServer(preview.rows, user, adminSession?.id === user.id ? adminSession.token : null, process.env.EXPO_PUBLIC_API_URL);
           uploadedToServer = true;
           let localCounts;
           await update(current => {
@@ -82,7 +81,6 @@ export default function RosterImport() {
             return importRoster(current, user, preview.rows);
           });
           setResult(`Roster uploaded. ${remoteCounts.added} new students added; ${remoteCounts.skipped} existing IDs kept. This device saved ${localCounts.added} local account(s).`);
-          setServerPassword('');
           setPreview(null);
         } catch (e) {
           setError(uploadedToServer
@@ -91,7 +89,7 @@ export default function RosterImport() {
         }
         finally { lock.current = false; setBusy(false); }
       }}>{busy ? 'Uploading roster...' : 'Upload and import roster'}</Button>
-      <Button secondary disabled={busy} onPress={() => { setPreview(null); setServerPassword(''); }}>Cancel import</Button>
+      <Button secondary disabled={busy} onPress={() => { setPreview(null); }}>Cancel import</Button>
     </>}
     <ErrorText>{error}</ErrorText>
     {!!result && <Text accessibilityRole="alert" style={{ color: colors.yellow, fontWeight: '700' }}>{result}</Text>}

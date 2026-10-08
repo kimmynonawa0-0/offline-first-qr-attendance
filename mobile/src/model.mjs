@@ -37,6 +37,11 @@ export function cacheRemoteStudent(data, account, password) {
     : [...data.students, student] };
 }
 
+export function cacheRemoteAdminPassword(data, adminId, password) {
+  requireValue(data.admins.some(admin => admin.id === adminId), 'This organizer is not configured on this device.');
+  return { ...data, admins: data.admins.map(admin => admin.id === adminId ? { ...admin, password } : admin) };
+}
+
 export function mergeStudentAttendance(data, studentId, remoteRecords) {
   requireValue(data.students.some(student => student.id === studentId), 'This student account is not saved on this device.');
   requireValue(Array.isArray(remoteRecords), 'The server returned an invalid attendance history.');

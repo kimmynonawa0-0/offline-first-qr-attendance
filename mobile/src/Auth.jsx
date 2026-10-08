@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import { Button, Card, ErrorText, Field, Heading, LinkButton, ModalFrame, Muted, UniversityBanner } from './ui';
-import { cacheRemoteStudent, changePassword, login } from './model.mjs';
-import { changeStudentPasswordRemotely, loginStudentRemotely } from './remote-sync.mjs';
+import { cacheRemoteAdminPassword, cacheRemoteStudent, changePassword, login } from './model.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, loginStudentRemotely } from './remote-sync.mjs';
 import { useApp } from './state';
 
 export function LoginScreen({ onLogin }) {
-  const { data, update } = useApp();
+  const { data, update, adminSession, setAdminSession, setNotice } = useApp();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,19 +24,27 @@ export function LoginScreen({ onLogin }) {
         lock.current = true; setBusy(true); setError('');
         try {
           const localAdmin = data.admins.some(account => account.id === identifier.trim());
-          if (localAdmin) {
-            const account = login(data, identifier, password);
-            setPassword(''); onLogin(account); return;
-          }
           const apiUrl = process.env.EXPO_PUBLIC_API_URL;
           if (apiUrl) {
             try {
-              const remote = await loginStudentRemotely(identifier, password, apiUrl);
+              const remote = await loginStudentRemotely(identifier, password, apiUrl, fetch,
+                adminSession?.id === identifier.trim() ? adminSession.token : undefined);
+              if (remote.role === 'admin') {
+                if (!localAdmin) throw new Error('This organizer account is not configured on this device.');
+                const next = await update(current => cacheRemoteAdminPassword(current, remote.id, password));
+                await setAdminSession({ id: remote.id, token: remote.sessionToken });
+                setPassword(''); onLogin(login(next, remote.id, password)); return;
+              }
+              if (localAdmin) throw new Error('This ID is not registered as an organizer on the server.');
               const next = await update(current => cacheRemoteStudent(current, remote, password));
               setPassword(''); onLogin(login(next, remote.id, password)); return;
             } catch (remoteError) {
-              if (!remoteError.message.startsWith('Could not reach the attendance server.')) throw remoteError;
-              try { const account = login(data, identifier, password); setPassword(''); onLogin(account); return; }
+              if (!localAdmin) throw remoteError;
+              try {
+                const account = login(data, identifier, password);
+                setNotice('Signed in on this device. Server uploads need a verified online organizer session.');
+                setPassword(''); onLogin(account); return;
+              }
               catch { throw remoteError; }
             }
           }
@@ -55,7 +63,7 @@ export function LoginScreen({ onLogin }) {
 }
 
 export function ChangePasswordScreen({ onComplete, onLogout }) {
-  const { data, user, update } = useApp();
+  const { data, user, update, adminSession, setAdminSession } = useApp();
   const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -65,7 +73,7 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
   return <Card>
     <Heading>Choose your password</Heading>
     <Muted>Your section password is temporary. Create one with at least 12 characters that is not your section.</Muted>
-    {user.role === 'student' && process.env.EXPO_PUBLIC_API_URL && <Field label="Current password" password value={currentPassword} onChangeText={setCurrentPassword} />}
+    {process.env.EXPO_PUBLIC_API_URL && <Field label="Current password" password value={currentPassword} onChangeText={setCurrentPassword} />}
     <Field label="New password" password value={password} onChangeText={setPassword} />
     <Field label="Confirm new password" password value={confirm} onChangeText={setConfirm} />
     <ErrorText>{error}</ErrorText>
@@ -80,6 +88,15 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
           const account = login(next, user.id, password);
           setCurrentPassword('');
           onComplete(account);
+          return;
+        }
+        if (user.role === 'admin' && process.env.EXPO_PUBLIC_API_URL && adminSession?.id === user.id) {
+          const candidate = changePassword(data, user, password, confirm);
+          const updatedSession = await changeAdminPasswordRemotely(user, adminSession?.id === user.id ? adminSession.token : null,
+            currentPassword, password, process.env.EXPO_PUBLIC_API_URL);
+          await setAdminSession({ id: user.id, token: updatedSession.sessionToken });
+          const next = await update(() => candidate);
+          onComplete(login(next, user.id, password));
           return;
         }
         const next = await update(data => changePassword(data, user, password, confirm));

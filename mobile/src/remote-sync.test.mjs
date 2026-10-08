@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeStudentPasswordRemotely, downloadStudentAttendance, loginStudentRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
 
 test('remote sync sends only pending receipts and confirms only accepted IDs', async () => {
   const data = { students: [{ id: '1', name: 'A', section: 'S', password: 'private' }],
@@ -9,11 +9,14 @@ test('remote sync sends only pending receipts and confirms only accepted IDs', a
   let sent;
   const fetchImpl = async (_, options) => {
     sent = JSON.parse(options.body);
+    assert.equal(options.headers.Authorization, 'Bearer opaque-session-token');
     return { ok: true, json: async () => ({ acceptedRecordIds: ['r1'], conflictRecordIds: [] }) };
   };
-  const result = await syncToServer(data, { id: '23-02330', role: 'admin' }, 'secret', 'http://localhost:3000/', fetchImpl);
+  const result = await syncToServer(data, { id: '23-02330', role: 'admin' }, 'opaque-session-token', 'http://localhost:3000/', fetchImpl);
   assert.deepEqual(sent.records.map(r => r.id), ['r1']);
   assert.equal(sent.students[0].password, undefined);
+  assert.equal(sent.password, undefined);
+  assert.equal(sent.adminId, undefined);
   assert.equal(sent.events[0].attendees, undefined);
   assert.deepEqual(markSynced(data, result.acceptedRecordIds).records.map(r => r.synced), [true, true]);
   assert.equal(data.records[0].synced, false);
@@ -21,22 +24,23 @@ test('remote sync sends only pending receipts and confirms only accepted IDs', a
 
 test('failed server response leaves local data untouched', async () => {
   const data = { students: [], events: [], records: [{ id: 'r1', synced: false }] };
-  await assert.rejects(syncToServer(data, { id: 'a', role: 'admin' }, 'secret', 'http://localhost:3000',
+  await assert.rejects(syncToServer(data, { id: 'a', role: 'admin' }, 'opaque-session-token', 'http://localhost:3000',
     async () => ({ ok: false, json: async () => ({ error: 'Wrong password.' }) })), /Wrong password/);
   assert.equal(data.records[0].synced, false);
 });
 
 test('roster upload requires organizer role and confirms counts from the remote API', async () => {
   let sent;
-  const result = await uploadRosterToServer([{ id: '001', name: 'A', section: 'S' }], { id: 'admin', role: 'admin' }, 'pw', 'https://api.test',
+  const result = await uploadRosterToServer([{ id: '001', name: 'A', section: 'S' }], { id: 'admin', role: 'admin' }, 'opaque-session-token', 'https://api.test',
     async (url, options) => {
+      assert.equal(options.headers.Authorization, 'Bearer opaque-session-token');
       sent = { url, body: JSON.parse(options.body) };
       return { ok: true, json: async () => ({ added: 1, skipped: 0 }) };
     });
   assert.equal(sent.url, 'https://api.test/roster/upload');
   assert.equal(sent.body.students[0].id, '001');
   assert.deepEqual(result, { added: 1, skipped: 0 });
-  await assert.rejects(uploadRosterToServer([], { id: 'student', role: 'student' }, 'pw', 'https://api.test'), /organizer/);
+  await assert.rejects(uploadRosterToServer([], { id: 'student', role: 'student' }, 'opaque-session-token', 'https://api.test'), /organizer/);
 });
 
 test('remote student sign-in and password changes call the server API', async () => {
@@ -53,6 +57,33 @@ test('remote student sign-in and password changes call the server API', async ()
   await changeStudentPasswordRemotely({ id: '001', role: 'student' }, 'S', 'long secure password', 'https://api.test', fetchImpl);
   assert.equal(calls, 2);
   await assert.rejects(loginStudentRemotely('001', 'S', '', fetchImpl), /EXPO_PUBLIC_API_URL/);
+});
+
+test('remote organizer sign-in returns a token and password/logout calls use it silently', async () => {
+  let count = 0;
+  const fetchImpl = async (url, options) => {
+    count++;
+    if (url.endsWith('/auth/login')) return { ok: true, json: async () => ({ account: { id: '23-02330', role: 'admin' }, sessionToken: 'opaque-session-token' }) };
+    assert.equal(options.headers.Authorization, 'Bearer opaque-session-token');
+    return { ok: true, json: async () => url.endsWith('/auth/admin/password')
+      ? { ok: true, sessionToken: 'replacement-session-token' }
+      : { ok: true } };
+  };
+  const account = await loginStudentRemotely('23-02330', 'current password', 'https://api.test', fetchImpl);
+  assert.equal(account.sessionToken, 'opaque-session-token');
+  const updated = await changeAdminPasswordRemotely(account, account.sessionToken, 'current password', 'a much longer password', 'https://api.test', fetchImpl);
+  assert.equal(updated.sessionToken, 'replacement-session-token');
+  await logoutAdminRemotely(account.sessionToken, 'https://api.test', fetchImpl);
+  assert.equal(count, 3);
+});
+
+test('online organizer login can rotate the saved token without exposing it in the form', async () => {
+  let authHeader;
+  await loginStudentRemotely('23-02330', 'password', 'https://api.test', async (_, options) => {
+    authHeader = options.headers.Authorization;
+    return { ok: true, json: async () => ({ account: { id: '23-02330', role: 'admin' }, sessionToken: 'new-session-token' }) };
+  }, 'old-session-token');
+  assert.equal(authHeader, 'Bearer old-session-token');
 });
 
 test('student attendance refresh posts credentials and returns server records', async () => {

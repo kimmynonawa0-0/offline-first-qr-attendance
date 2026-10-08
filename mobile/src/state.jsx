@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
 import { createLocalRepository } from './local-repository';
 
@@ -9,6 +11,7 @@ export function AppProvider({ children }) {
   const [repository] = useState(createLocalRepository);
   const [data, setData] = useState(null);
   const [user, setUser] = useState(null);
+  const [adminSession, setAdminSessionState] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [online, setOnline] = useState(false);
@@ -16,14 +19,20 @@ export function AppProvider({ children }) {
   async function load() {
     setLoading(true);
     setError('');
-    try { setData(await repository.load()); }
+    try {
+      const [next, savedSession] = await Promise.all([
+        repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session'),
+      ]);
+      setData(next);
+      setAdminSessionState(savedSession ? JSON.parse(savedSession) : null);
+    }
     catch { setError('Could not open local data. Your saved data has not been overwritten. Please retry.'); }
     finally { setLoading(false); }
   }
   useEffect(() => {
     let active = true;
-    repository.load().then(next => {
-      if (active) { setData(next); setLoading(false); }
+    Promise.all([repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session')]).then(([next, savedSession]) => {
+      if (active) { setData(next); setAdminSessionState(savedSession ? JSON.parse(savedSession) : null); setLoading(false); }
     }).catch(() => {
       if (active) {
         setError('Could not open local data. Your saved data has not been overwritten. Please retry.');
@@ -43,5 +52,13 @@ export function AppProvider({ children }) {
     setData(next);
     return next;
   }
-  return <Context.Provider value={{ data, user, setUser, online, notice, setNotice, loading, error, load, update }}>{children}</Context.Provider>;
+  async function setAdminSession(session) {
+    if (Platform.OS !== 'web') await SecureStore.setItemAsync('norwescan-admin-session', JSON.stringify(session));
+    setAdminSessionState(session);
+  }
+  async function clearAdminSession() {
+    if (Platform.OS !== 'web') await SecureStore.deleteItemAsync('norwescan-admin-session');
+    setAdminSessionState(null);
+  }
+  return <Context.Provider value={{ data, user, setUser, adminSession, setAdminSession, clearAdminSession, online, notice, setNotice, loading, error, load, update }}>{children}</Context.Provider>;
 }

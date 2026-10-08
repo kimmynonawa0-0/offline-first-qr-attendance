@@ -11,7 +11,7 @@ import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
 import { checkIn, createEvent, deleteEvent, localDate, mergeStudentAttendance, methodLabel } from './model.mjs';
-import { downloadStudentAttendance, markSynced, syncToServer } from './remote-sync.mjs';
+import { downloadStudentAttendance, logoutAdminRemotely, markSynced, syncToServer } from './remote-sync.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'create-event', 'event', 'history', 'roster-import', 'scanner', 'receipt'];
@@ -138,7 +138,7 @@ function Attendees({ event }) {
 export default function AppScreen() {
   const { page: screen = 'login', eventId, recordId } = useLocalSearchParams();
   const focused = useIsFocused();
-  const { data, user, setUser, loading, error: storageError, load, update, online, notice, setNotice } = useApp();
+  const { data, user, setUser, adminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
   const [eventInfoOpen, setEventInfoOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
@@ -146,7 +146,6 @@ export default function AppScreen() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
-  const [syncPassword, setSyncPassword] = useState('');
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   const home = user?.role === 'admin' ? 'admin-home' : 'student-home';
@@ -165,7 +164,13 @@ export default function AppScreen() {
     return records.length;
   }
   function requestLogout() {
-    setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: () => { setUser(null); setConfirm(null); router.replace('/'); } });
+    setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: async () => {
+      if (user?.role === 'admin') {
+        try { await logoutAdminRemotely(adminSession?.id === user.id ? adminSession.token : null, process.env.EXPO_PUBLIC_API_URL); } catch {}
+        await clearAdminSession();
+      }
+      setUser(null); setConfirm(null); router.replace('/');
+    } });
   }
   if (loading || !data) return <SafeAreaView style={styles.safe}><View style={{ padding: 24 }}>
     <BrandMark />{loading ? <ActivityIndicator color={colors.yellow} /> : <><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
@@ -294,16 +299,16 @@ export default function AppScreen() {
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)}><EventSummary event={currentEvent} /></ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
-    {syncOpen && <ModalFrame title="Upload to server" onClose={() => { setSyncOpen(false); setSyncPassword(''); }} busy={busy}>
-      <Muted>Enter the organizer password configured on the server. Rosters, events, and attendance will be uploaded.</Muted>
-      <Field label="Server organizer password" password value={syncPassword} onChangeText={setSyncPassword} />
+    {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
+      <Muted>Your organizer session will securely authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.</Muted>
+      {adminSession?.id !== user.id && <Muted>Sign in online as an organizer before uploading.</Muted>}
       <ErrorText>{error}</ErrorText>
-      <Button disabled={busy || !syncPassword} onPress={() => run(async () => {
-        const result = await syncToServer(data, user, syncPassword, process.env.EXPO_PUBLIC_API_URL);
+      <Button disabled={busy || adminSession?.id !== user.id} onPress={() => run(async () => {
+        const result = await syncToServer(data, user, adminSession?.id === user.id ? adminSession.token : null, process.env.EXPO_PUBLIC_API_URL);
         await update(current => markSynced(current, result.acceptedRecordIds));
         return result;
       }, result => {
-        setSyncPassword(''); setSyncOpen(false);
+        setSyncOpen(false);
         setNotice(`Upload complete. ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
       })}>{busy ? 'Uploading...' : 'Upload data'}</Button>
     </ModalFrame>}
