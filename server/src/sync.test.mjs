@@ -11,7 +11,7 @@ test('organizer password verifier accepts the correct password only', () => {
 });
 
 test('sync rejects malformed attendance batches before database writes', () => {
-  const batch = { adminId: '23-02330', password: 'password', students: [], events: [], records: [] };
+  const batch = { students: [], events: [], records: [] };
   assert.doesNotThrow(() => validateBatch(batch));
   assert.throws(() => validateBatch({ ...batch, records: [{ id: 'r' }] }), /Invalid attendance/);
   assert.throws(() => validateBatch({ ...batch, students: {} }), /Missing students/);

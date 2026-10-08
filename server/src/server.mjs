@@ -1,8 +1,9 @@
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
-import { passwordHash, passwordMatches, passwordMatchesAsync, passwordHashAsync, saveBatch, validateBatch } from './sync.mjs';
+import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, validateBatch } from './sync.mjs';
 import { provisionRoster } from './roster.mjs';
+import { createOrganizerSessionToken, hashSessionToken } from './auth.mjs';
 
 const { DATABASE_URL, ADMIN_ID, ADMIN_PASSWORD, PORT = '3000' } = process.env;
 if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12) {
@@ -10,7 +11,12 @@ if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12)
 }
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 await pool.query(`CREATE TABLE IF NOT EXISTS organizers (
-  id TEXT PRIMARY KEY, salt TEXT NOT NULL, password_hash TEXT NOT NULL
+  id TEXT PRIMARY KEY, salt TEXT NOT NULL, password_hash TEXT NOT NULL,
+  credential_initialized BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE TABLE IF NOT EXISTS organizer_sessions (
+  token_hash TEXT PRIMARY KEY, organizer_id TEXT NOT NULL REFERENCES organizers(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS students (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, section TEXT NOT NULL, email TEXT NOT NULL DEFAULT '',
@@ -33,8 +39,19 @@ await pool.query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_dat
   CREATE INDEX IF NOT EXISTS attendance_student_recorded_at_idx ON attendance (student_id, recorded_at DESC);`);
 const salt = randomBytes(16).toString('hex');
 await pool.query(`INSERT INTO organizers (id, salt, password_hash) VALUES ($1, $2, $3)
-  ON CONFLICT (id) DO UPDATE SET salt = EXCLUDED.salt, password_hash = EXCLUDED.password_hash`,
+  ON CONFLICT (id) DO NOTHING`,
   [ADMIN_ID, salt, passwordHash(ADMIN_PASSWORD, salt)]);
+await pool.query('ALTER TABLE organizers ADD COLUMN IF NOT EXISTS credential_initialized BOOLEAN NOT NULL DEFAULT FALSE');
+await pool.query(`ALTER TABLE organizer_sessions ALTER COLUMN expires_at DROP NOT NULL;
+  DELETE FROM organizer_sessions WHERE expires_at <= NOW();
+  UPDATE organizer_sessions SET expires_at = NULL;`);
+
+async function organizerForRequest(request) {
+  const token = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
+  if (!token) return null;
+  const result = await pool.query('SELECT organizer_id FROM organizer_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
+  return result.rows[0]?.organizer_id || null;
+}
 
 const server = http.createServer(async (request, response) => {
   const send = (status, result) => {
@@ -56,6 +73,28 @@ const server = http.createServer(async (request, response) => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return send(400, { error: 'Request body must be a JSON object.' });
     if (request.method === 'POST' && request.url === '/auth/login') {
       if (typeof body.id !== 'string' || typeof body.password !== 'string') return send(400, { error: 'Student ID and password are required.' });
+      const organizer = await pool.query('SELECT id, salt, password_hash, credential_initialized FROM organizers WHERE id = $1', [body.id.trim()]);
+      if (organizer.rows[0]) {
+        let validPassword = await passwordMatchesAsync(body.password, organizer.rows[0].salt, organizer.rows[0].password_hash);
+        if (!validPassword && !organizer.rows[0].credential_initialized && body.password === ADMIN_PASSWORD) {
+          const salt = randomBytes(16).toString('hex');
+          await pool.query('UPDATE organizers SET salt = $2, password_hash = $3, credential_initialized = TRUE WHERE id = $1',
+            [organizer.rows[0].id, salt, await passwordHashAsync(body.password, salt)]);
+          validPassword = true;
+        } else if (validPassword && !organizer.rows[0].credential_initialized) {
+          await pool.query('UPDATE organizers SET credential_initialized = TRUE WHERE id = $1', [organizer.rows[0].id]);
+        }
+        if (!validPassword) {
+          return send(401, { error: 'Invalid student ID or password.' });
+        }
+        const token = createOrganizerSessionToken();
+        const previousToken = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
+        if (previousToken) await pool.query('DELETE FROM organizer_sessions WHERE token_hash = $1 AND organizer_id = $2',
+          [hashSessionToken(previousToken), organizer.rows[0].id]);
+        await pool.query('INSERT INTO organizer_sessions (token_hash, organizer_id) VALUES ($1, $2)',
+          [hashSessionToken(token), organizer.rows[0].id]);
+        return send(200, { account: { id: organizer.rows[0].id, role: 'admin' }, sessionToken: token });
+      }
       const result = await pool.query('SELECT id, name, section, email, password_salt, password_hash, must_change_password FROM students WHERE id = $1', [body.id.trim()]);
       const student = result.rows[0];
       if (!student?.password_hash || !await passwordMatchesAsync(body.password, student.password_salt, student.password_hash)) {
@@ -80,6 +119,29 @@ const server = http.createServer(async (request, response) => {
         [body.id.trim(), salt, await passwordHashAsync(body.newPassword, salt)]);
       return send(200, { ok: true });
     }
+    if (request.method === 'POST' && request.url === '/auth/admin/password') {
+      const organizerId = await organizerForRequest(request);
+      if (!organizerId) return send(401, { error: 'Your organizer session expired. Log in again.' });
+      if (typeof body.currentPassword !== 'string' || typeof body.newPassword !== 'string') return send(400, { error: 'Current and new passwords are required.' });
+      if (body.newPassword.trim().length < 12) return send(400, { error: 'Use at least 12 characters for your new password.' });
+      const organizer = await pool.query('SELECT salt, password_hash FROM organizers WHERE id = $1', [organizerId]);
+      if (!organizer.rows[0] || !await passwordMatchesAsync(body.currentPassword, organizer.rows[0].salt, organizer.rows[0].password_hash)) {
+        return send(401, { error: 'Your current password could not be verified.' });
+      }
+      const salt = randomBytes(16).toString('hex');
+      await pool.query('UPDATE organizers SET salt = $2, password_hash = $3, credential_initialized = TRUE WHERE id = $1',
+        [organizerId, salt, await passwordHashAsync(body.newPassword, salt)]);
+      const token = createOrganizerSessionToken();
+      await pool.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [organizerId]);
+      await pool.query('INSERT INTO organizer_sessions (token_hash, organizer_id) VALUES ($1, $2)',
+        [hashSessionToken(token), organizerId]);
+      return send(200, { ok: true, sessionToken: token });
+    }
+    if (request.method === 'POST' && request.url === '/auth/logout') {
+      const token = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
+      if (token) await pool.query('DELETE FROM organizer_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
+      return send(200, { ok: true });
+    }
     if (request.method === 'POST' && request.url === '/student/attendance') {
       if (typeof body.id !== 'string' || typeof body.password !== 'string') return send(400, { error: 'Student ID and password are required.' });
       const account = await pool.query('SELECT password_salt, password_hash FROM students WHERE id = $1', [body.id.trim()]);
@@ -100,21 +162,14 @@ const server = http.createServer(async (request, response) => {
       })) });
     }
     if (request.method === 'POST' && request.url === '/roster/upload') {
-      if (typeof body.adminId !== 'string' || typeof body.password !== 'string') return send(400, { error: 'Organizer credentials are required.' });
-      const admin = await pool.query('SELECT salt, password_hash FROM organizers WHERE id = $1', [body.adminId]);
-      if (!admin.rows[0] || !await passwordMatchesAsync(body.password, admin.rows[0].salt, admin.rows[0].password_hash)) {
-        return send(401, { error: 'Server organizer ID or password is incorrect.' });
-      }
+      if (!await organizerForRequest(request)) return send(401, { error: 'Your organizer session expired. Log in again.' });
       const client = await pool.connect();
       try { return send(200, await provisionRoster(client, body.students)); }
       finally { client.release(); }
     }
     if (request.method !== 'POST' || request.url !== '/sync') return send(404, { error: 'Not found.' });
+    if (!await organizerForRequest(request)) return send(401, { error: 'Your organizer session expired. Log in again.' });
     validateBatch(body);
-    const admin = await pool.query('SELECT salt, password_hash FROM organizers WHERE id = $1', [body.adminId]);
-    if (!admin.rows[0] || !passwordMatches(body.password, admin.rows[0].salt, admin.rows[0].password_hash)) {
-      return send(401, { error: 'Server organizer ID or password is incorrect.' });
-    }
     const client = await pool.connect();
     try { return send(200, await saveBatch(client, body)); }
     finally { client.release(); }

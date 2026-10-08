@@ -26,7 +26,7 @@ export async function passwordMatchesAsync(password, salt, expected) {
 }
 
 export function validateBatch(body) {
-  if (!body || typeof body.adminId !== 'string' || typeof body.password !== 'string') throw new Error('Organizer credentials are required.');
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Sync batch must be an object.');
   for (const key of ['students', 'events', 'records']) if (!Array.isArray(body[key])) throw new Error(`Missing ${key} list.`);
   if (body.students.length > 5000 || body.events.length > 1000 || body.records.length > 10000) throw new Error('Sync batch is too large.');
   for (const student of body.students) {
