@@ -5,7 +5,7 @@ import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, loginStuden
 import { useApp } from './state';
 
 export function LoginScreen({ onLogin }) {
-  const { data, update, adminSession, setAdminSession, setNotice } = useApp();
+  const { data, update, adminSession, setAdminSession, setAdminAuthIssue, setNotice } = useApp();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -33,6 +33,7 @@ export function LoginScreen({ onLogin }) {
                 if (!localAdmin) throw new Error('This organizer account is not configured on this device.');
                 const next = await update(current => cacheRemoteAdminPassword(current, remote.id, password));
                 await setAdminSession({ id: remote.id, token: remote.sessionToken });
+                setAdminAuthIssue('');
                 setPassword(''); onLogin(login(next, remote.id, password)); return;
               }
               if (localAdmin) throw new Error('This ID is not registered as an organizer on the server.');
@@ -42,6 +43,7 @@ export function LoginScreen({ onLogin }) {
               if (!localAdmin) throw remoteError;
               try {
                 const account = login(data, identifier, password);
+                setAdminAuthIssue(remoteError.message || 'The server rejected the sign-in.');
                 setNotice('Signed in on this device. Server uploads need a verified online organizer session.');
                 setPassword(''); onLogin(account); return;
               }
@@ -49,6 +51,7 @@ export function LoginScreen({ onLogin }) {
             }
           }
           const account = login(data, identifier, password);
+          if (localAdmin) setAdminAuthIssue('This app build has no server URL configured.');
           setPassword(''); onLogin(account);
         } catch (e) { setError(e.message); }
         finally { lock.current = false; setBusy(false); }

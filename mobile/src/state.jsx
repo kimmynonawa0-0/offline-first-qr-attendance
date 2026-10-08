@@ -14,6 +14,7 @@ export function AppProvider({ children }) {
   const [adminSession, setAdminSessionState] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [adminAuthIssue, setAdminAuthIssue] = useState('');
   const [online, setOnline] = useState(false);
   const [loading, setLoading] = useState(true);
   async function load() {
@@ -60,5 +61,5 @@ export function AppProvider({ children }) {
     if (Platform.OS !== 'web') await SecureStore.deleteItemAsync('norwescan-admin-session');
     setAdminSessionState(null);
   }
-  return <Context.Provider value={{ data, user, setUser, adminSession, setAdminSession, clearAdminSession, online, notice, setNotice, loading, error, load, update }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ data, user, setUser, adminSession, setAdminSession, clearAdminSession, adminAuthIssue, setAdminAuthIssue, online, notice, setNotice, loading, error, load, update }}>{children}</Context.Provider>;
 }

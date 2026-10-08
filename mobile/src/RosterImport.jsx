@@ -10,7 +10,7 @@ import { parseSpreadsheet } from './spreadsheet.mjs';
 import { uploadRosterToServer } from './remote-sync.mjs';
 
 export default function RosterImport() {
-  const { data, user, update, adminSession } = useApp();
+  const { data, user, update, adminSession, adminAuthIssue } = useApp();
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
@@ -66,7 +66,11 @@ export default function RosterImport() {
       </View>)}
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
       <Muted>Internet is required. The roster is uploaded to PostgreSQL before it is saved on this phone.</Muted>
-      {!adminSession || adminSession.id !== user.id ? <Muted>Sign in online as an organizer before uploading a roster.</Muted> : null}
+      {!adminSession || adminSession.id !== user.id ? <>
+        <ErrorText>Organizer access is only on this phone; the server has not verified this sign-in.</ErrorText>
+        {adminAuthIssue ? <ErrorText>Server sign-in detail: {adminAuthIssue}</ErrorText> : null}
+        <Muted>Connect to the internet and sign in again. The roster cannot upload until the server verifies the organizer.</Muted>
+      </> : null}
       <View style={styles.localPill}><Ionicons name="alert-circle-outline" size={18} color={colors.yellow} /><Text style={styles.localPillText}>Existing accounts and passwords stay unchanged.</Text></View>
       <Button disabled={busy || adminSession?.id !== user.id} onPress={async () => {
         if (lock.current) return;
