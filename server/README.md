@@ -27,9 +27,14 @@ PORT=3000
 
 For PowerShell, use `$env:DATABASE_URL='...'` (and likewise for the other values)
 in the terminal running the server. A `.env` file is not loaded automatically.
-The server creates its tables and organizer password hash on startup. `GET /health`
-checks database connectivity. The organizer password is reset to the environment
-value every time this single-organizer prototype server starts.
+The server creates its tables and seeds the organizer password on first startup.
+`GET /health` checks database connectivity. For an existing deployment, set
+`ADMIN_PASSWORD` to a private password of at least 12 characters, then use that
+same password for the organizer's regular mobile login. The first successful
+organizer login aligns the stored credential once; later password changes are
+saved in PostgreSQL and are not reset on restart. If the local organizer has
+not completed the first-login password change yet, local login still works,
+but remote uploads remain unavailable until the passwords match.
 
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
@@ -37,10 +42,16 @@ For testing across different networks, deploy this API behind HTTPS and point it
 at a managed PostgreSQL database. The database URL and organizer password stay
 on the server and must never be placed in the mobile app.
 
-When importing a roster, the organizer enters the server organizer password.
-The API verifies the organizer and transactionally creates student records with
-salted hashes of each student's section as their temporary password. Existing
-student credentials and profiles are preserved. Students must have internet for
+The organizer signs in through the regular student-ID/password page. On online
+login, the API returns a random session token; the app stores it with Expo
+SecureStore and sends it automatically for roster uploads and sync. The token
+does not expire automatically: logging out revokes it, and changing the admin
+password revokes prior sessions while issuing a replacement for the current
+device. A logout while offline clears the local token, but the server cannot
+receive the revocation until the device is online again.
+Roster uploads create student records with salted hashes of each student's
+section as their temporary password. Existing student credentials and profiles
+are preserved. Students must have internet for
 their first server login and password change; after login, the app caches their
 account in local SQLite so they can sign in offline on that device.
 
@@ -52,8 +63,7 @@ Students can refresh records from `/student/attendance`; returned attendance is
 cached on their device for offline viewing. The server stores each scan's
 original date and time for history display.
 
-This is a prototype account system. The API verifies passwords on each login
-without issuing long-lived sessions. Student passwords remain in local SQLite
+This is a prototype account system. Student passwords remain in local SQLite
 for offline login, so treat those devices as trusted and use test data only.
-Before production, add rate limiting, managed sessions, secure local credential
-storage, account recovery, audit logging, and a reviewed HTTPS deployment.
+Before production, add rate limiting, account recovery, audit logging, and a
+reviewed HTTPS deployment.
