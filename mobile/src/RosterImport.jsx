@@ -21,8 +21,8 @@ export default function RosterImport() {
   async function choose() {
     setError(''); setResult(''); setPreview(null);
     try {
-      // Android grants access to the picked content URI; its Expo Go cache copy can be unreadable.
-      const selected = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false, copyToCacheDirectory: Platform.OS !== 'android', base64: false });
+      // Copy the picked document into app cache so Expo FileSystem can read it on Android.
+      const selected = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: false, copyToCacheDirectory: true, base64: false });
       if (selected.canceled) return;
       const asset = selected.assets[0];
       const extension = asset.name?.match(/\.(csv|xlsx|xls)$/i)?.[1]?.toLowerCase();

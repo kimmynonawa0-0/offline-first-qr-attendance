@@ -33,12 +33,13 @@ const pageTitles = {
   receipt: 'Attendance recorded',
 };
 
-function HeaderBar({ screen, user, online, eventId }) {
+function HeaderBar({ screen, user, online, eventId, adminSession }) {
   const back = ['records', 'profile'].includes(screen) ? ['student-home']
     : ['admin-records', 'create-event', 'history', 'roster-import', 'event'].includes(screen) ? ['admin-home']
       : ['scanner', 'receipt'].includes(screen) ? ['event', { eventId }]
         : null;
-  const localMode = user?.role === 'admin';
+  const serverSession = user?.role === 'admin' && adminSession?.id === user.id && Boolean(adminSession.token);
+  const status = user?.role === 'admin' && !serverSession ? 'LOCAL MODE' : online ? 'ONLINE' : 'OFFLINE';
   return <View style={styles.header}>
     <View style={styles.headerLeading}>
       {back && <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => replace(back[0], back[1])} style={styles.headerBack}>
@@ -46,8 +47,8 @@ function HeaderBar({ screen, user, online, eventId }) {
       </Pressable>}
       {screen === 'admin-home' ? <BrandMark compact /> : <Text style={styles.pageTitle}>{pageTitles[screen] || 'NORWEScan'}</Text>}
     </View>
-    <Text style={[styles.badge, !localMode && !online && { color: '#FF9B94', backgroundColor: '#281413', borderColor: '#74332F' }]}>
-      {localMode ? 'LOCAL MODE' : online ? 'ONLINE' : 'OFFLINE'}
+    <Text style={[styles.badge, status === 'OFFLINE' && { color: '#FF9B94', backgroundColor: '#281413', borderColor: '#74332F' }]}>
+      {status}
     </Text>
   </View>;
 }
@@ -280,7 +281,7 @@ export default function AppScreen() {
   return <SafeAreaView style={styles.safe}>
     <StatusBar style="light" />
     <View style={styles.container}>
-      {!authScreen && <HeaderBar screen={screen} user={user} online={online} eventId={eventId} />}
+      {!authScreen && <HeaderBar screen={screen} user={user} online={online} eventId={eventId} adminSession={adminSession} />}
       {!!notice && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setNotice('')} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable>}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
