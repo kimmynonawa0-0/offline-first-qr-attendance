@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeStudentAttendance } from './model.mjs';
+import { cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -32,6 +32,25 @@ test('remote student login caches a sanitized student account without changing o
   assert.equal(login(data, '00123', 'BSCS-3C').role, 'student');
   assert.equal(data.students[0].mustChangePassword, true);
   assert.throws(() => cacheRemoteStudent(data, { id: '23-02330', name: 'Wrong', section: 'S', role: 'student' }, 'S'), /organizer/);
+});
+
+test('organizer bootstrap refreshes assigned data without replacing local passwords or attendance', () => {
+  let data = importRoster(ready(), admin, rows);
+  data.students[0].password = 'student private password';
+  data.events = [{ id: 'old', name: 'Old', attendees: [], assignedToOrganizer: true }];
+  data.records = [{ id: 'pending', studentId: '00123', eventId: 'old', synced: false }];
+  data = mergeOrganizerBootstrap(data, {
+    students: [{ id: '00123', name: 'Juan Updated', section: 'BSCS-3C' }],
+    events: [{ id: 'assigned', name: 'Assembly', location: 'Hall', date: '2026-10-16', time: '10:00', attendees: [] }],
+  });
+  assert.equal(data.students[0].password, 'student private password');
+  assert.equal(data.events.find(item => item.id === 'old').assignedToOrganizer, false);
+  assert.equal(data.events.find(item => item.id === 'assigned').assignedToOrganizer, true);
+  assert.equal(data.records[0].synced, false);
+  data = cacheRemoteAdminPassword(data, '00123', 'student private password', { name: 'Juan Updated', mustChangePassword: false });
+  assert.equal(login(data, '00123', 'student private password').role, 'admin');
+  assert.equal(data.students.some(item => item.id === '00123'), false);
+  assert.equal(data.records[0].id, 'pending');
 });
 
 test('student attendance refresh merges only that student\'s records and preserves local history', () => {

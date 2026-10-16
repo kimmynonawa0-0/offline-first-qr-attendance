@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button, Card, ErrorText, Field, Heading, LinkButton, ModalFrame, Muted, UniversityBanner } from './ui';
-import { cacheRemoteAdminPassword, cacheRemoteStudent, changePassword, login } from './model.mjs';
-import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, loginStudentRemotely } from './remote-sync.mjs';
+import { cacheRemoteAdminPassword, cacheRemoteStudent, changePassword, login, mergeOrganizerBootstrap } from './model.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerBootstrap, loginStudentRemotely } from './remote-sync.mjs';
 import { useApp } from './state';
 
 export function LoginScreen({ onLogin }) {
@@ -30,10 +30,22 @@ export function LoginScreen({ onLogin }) {
               const remote = await loginStudentRemotely(identifier, password, apiUrl, fetch,
                 adminSession?.id === identifier.trim() ? adminSession.token : undefined);
               if (remote.role === 'admin') {
-                if (!localAdmin) throw new Error('This organizer account is not configured on this device.');
-                const next = await update(current => cacheRemoteAdminPassword(current, remote.id, password));
+                if (remote.accessLevel === 'manager') {
+                  throw new Error('System manager accounts use the management website, not the scanning app.');
+                }
+                let bootstrap = null;
+                let bootstrapError = null;
+                if (!remote.mustChangePassword) {
+                  try { bootstrap = await downloadOrganizerBootstrap(remote.sessionToken, apiUrl); }
+                  catch (error) { bootstrapError = error; }
+                }
+                const next = await update(current => cacheRemoteAdminPassword(
+                  bootstrap ? mergeOrganizerBootstrap(current, bootstrap) : current,
+                  remote.id, password, { name: remote.name, section: remote.section, mustChangePassword: remote.mustChangePassword },
+                ));
                 await setAdminSession({ id: remote.id, token: remote.sessionToken });
                 setAdminAuthIssue('');
+                if (bootstrapError) setNotice(`Signed in. Assigned events could not be downloaded: ${bootstrapError.message}`);
                 setPassword(''); onLogin(login(next, remote.id, password)); return;
               }
               if (localAdmin) throw new Error('This ID is not registered as an organizer on the server.');
@@ -41,6 +53,7 @@ export function LoginScreen({ onLogin }) {
               setPassword(''); onLogin(login(next, remote.id, password)); return;
             } catch (remoteError) {
               if (!localAdmin) throw remoteError;
+              if (remoteError.message !== 'Could not reach the attendance server. Connect to the internet and try again.') throw remoteError;
               try {
                 const account = login(data, identifier, password);
                 setAdminAuthIssue(remoteError.message || 'The server rejected the sign-in.');
@@ -66,7 +79,7 @@ export function LoginScreen({ onLogin }) {
 }
 
 export function ChangePasswordScreen({ onComplete, onLogout }) {
-  const { data, user, update, adminSession, setAdminSession } = useApp();
+  const { data, user, update, adminSession, setAdminSession, setNotice } = useApp();
   const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -98,7 +111,10 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
           const updatedSession = await changeAdminPasswordRemotely(user, adminSession?.id === user.id ? adminSession.token : null,
             currentPassword, password, process.env.EXPO_PUBLIC_API_URL);
           await setAdminSession({ id: user.id, token: updatedSession.sessionToken });
-          const next = await update(() => candidate);
+          let bootstrap = null;
+          try { bootstrap = await downloadOrganizerBootstrap(updatedSession.sessionToken, process.env.EXPO_PUBLIC_API_URL); }
+          catch (bootstrapError) { setNotice(`Password updated. Assigned events could not be downloaded: ${bootstrapError.message}`); }
+          const next = await update(() => bootstrap ? mergeOrganizerBootstrap(candidate, bootstrap) : candidate);
           onComplete(login(next, user.id, password));
           return;
         }

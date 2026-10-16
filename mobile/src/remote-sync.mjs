@@ -23,11 +23,26 @@ export async function uploadRosterToServer(students, user, token, apiUrl, fetchI
 }
 
 export async function loginStudentRemotely(identifier, password, apiUrl, fetchImpl = fetch, previousToken) {
-  const result = await postJson(apiUrl, '/auth/login', { id: identifier.trim(), password }, fetchImpl, previousToken);
+  const result = await postJson(apiUrl, '/auth/login', { id: identifier.trim(), password, client: 'mobile' }, fetchImpl, previousToken);
   if (!['student', 'admin'].includes(result.account?.role) || !result.account.id) throw new Error('Server returned an invalid account.');
   if (result.account.role === 'admin' && typeof result.sessionToken !== 'string') throw new Error('Server did not issue an organizer session.');
   if (result.account.role === 'admin') result.account.sessionToken = result.sessionToken;
   return result.account;
+}
+
+export async function downloadOrganizerBootstrap(token, apiUrl, fetchImpl = fetch) {
+  if (!token) throw new Error('Sign in online as an organizer to download assigned events.');
+  if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');
+  let response;
+  try {
+    response = await fetchImpl(`${apiUrl.replace(/\/$/, '')}/organizer/bootstrap`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch { throw new Error('Could not reach the attendance server. Connect to the internet and try again.'); }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Could not download assigned organizer data.');
+  if (!Array.isArray(result.students) || !Array.isArray(result.events)) throw new Error('Server returned invalid organizer data.');
+  return result;
 }
 
 export async function changeStudentPasswordRemotely(user, currentPassword, newPassword, apiUrl, fetchImpl = fetch) {
@@ -59,12 +74,14 @@ export async function syncToServer(data, user, token, apiUrl, fetchImpl = fetch)
   if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');
   if (!token) throw new Error('Sign in online as an organizer to sync.');
   const pending = data.records.filter(record => !record.synced);
+  const pendingEventIds = new Set(pending.map(record => record.eventId));
+  const pendingStudentIds = new Set(pending.map(record => record.studentId));
   const response = await fetchImpl(`${apiUrl.replace(/\/$/, '')}/sync`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
-      students: data.students.map(({ id, name, section, email }) => ({ id, name, section, email })),
-      events: data.events.map(({ attendees, ...event }) => event),
+      students: data.students.filter(student => pendingStudentIds.has(student.id)).map(({ id, name, section, email }) => ({ id, name, section, email })),
+      events: data.events.filter(event => pendingEventIds.has(event.id)).map(({ attendees, ...event }) => event),
       records: pending,
     }),
   });

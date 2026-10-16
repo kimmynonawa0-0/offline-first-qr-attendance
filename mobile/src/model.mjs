@@ -37,9 +37,42 @@ export function cacheRemoteStudent(data, account, password) {
     : [...data.students, student] };
 }
 
-export function cacheRemoteAdminPassword(data, adminId, password) {
-  requireValue(data.admins.some(admin => admin.id === adminId), 'This organizer is not configured on this device.');
-  return { ...data, admins: data.admins.map(admin => admin.id === adminId ? { ...admin, password } : admin) };
+export function cacheRemoteAdminPassword(data, adminId, password, serverAccount = {}) {
+  const existing = data.admins.find(admin => admin.id === adminId);
+  const student = data.students.find(account => account.id === adminId);
+  const serverProfile = Object.fromEntries(Object.entries(serverAccount).filter(([, value]) => value !== undefined));
+  const organizer = existing || { ...(student || {}), ...serverProfile, id: adminId,
+    section: serverAccount.section || student?.section || 'Organizer', email: serverAccount.email || student?.email || '',
+    mustChangePassword: Boolean(serverAccount.mustChangePassword) };
+  return {
+    ...data,
+    students: data.students.filter(account => account.id !== adminId),
+    admins: existing
+      ? data.admins.map(admin => admin.id === adminId ? { ...admin, ...serverProfile, password } : admin)
+      : [...data.admins, { ...organizer, password }],
+  };
+}
+
+export function mergeOrganizerBootstrap(data, bootstrap) {
+  requireValue(Array.isArray(bootstrap?.students) && Array.isArray(bootstrap?.events), 'The server returned invalid organizer data.');
+  let next = { ...data, events: data.events.map(event => ({ ...event, assignedToOrganizer: false })) };
+  for (const student of bootstrap.students) {
+    requireValue(student?.id && student?.name && student?.section, 'The server returned an invalid student roster entry.');
+    if (next.admins.some(account => account.id === student.id)) continue;
+    const current = next.students.find(account => account.id === student.id);
+    const profile = { id: student.id, name: student.name, section: student.section, email: student.email || '' };
+    next = { ...next, students: current
+      ? next.students.map(account => account.id === student.id ? { ...account, ...profile } : account)
+      : [...next.students, { ...profile, password: student.section, mustChangePassword: true }] };
+  }
+  for (const event of bootstrap.events) {
+    requireValue(event?.id && event?.name && event?.date && event?.time, 'The server returned an invalid assigned event.');
+    const current = next.events.find(item => item.id === event.id);
+    next = { ...next, events: current
+      ? next.events.map(item => item.id === event.id ? { ...item, ...event, assignedToOrganizer: true, attendees: item.attendees || [] } : item)
+      : [...next.events, { ...event, assignedToOrganizer: true, attendees: event.attendees || [] }] };
+  }
+  return next;
 }
 
 export function mergeStudentAttendance(data, studentId, remoteRecords) {

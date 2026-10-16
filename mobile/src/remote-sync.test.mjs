@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
 
 test('remote sync sends only pending receipts and confirms only accepted IDs', async () => {
   const data = { students: [{ id: '1', name: 'A', section: 'S', password: 'private' }],
-    events: [{ id: 'e', name: 'Event', attendees: [{ id: '1' }] }],
-    records: [{ id: 'r1', synced: false }, { id: 'r2', synced: true }] };
+    events: [{ id: 'e', name: 'Event', location: 'Hall', date: '2026-10-16', time: '10:00', attendees: [{ id: '1' }] },
+      { id: 'old', name: 'Old event', location: 'Room', date: '2026-10-15', time: '09:00', attendees: [] }],
+    records: [{ id: 'r1', studentId: '1', eventId: 'e', synced: false }, { id: 'r2', studentId: '1', eventId: 'old', synced: true }] };
   let sent;
   const fetchImpl = async (_, options) => {
     sent = JSON.parse(options.body);
@@ -14,12 +15,24 @@ test('remote sync sends only pending receipts and confirms only accepted IDs', a
   };
   const result = await syncToServer(data, { id: '23-02330', role: 'admin' }, 'opaque-session-token', 'http://localhost:3000/', fetchImpl);
   assert.deepEqual(sent.records.map(r => r.id), ['r1']);
+  assert.deepEqual(sent.students.map(student => student.id), ['1']);
+  assert.deepEqual(sent.events.map(event => event.id), ['e']);
   assert.equal(sent.students[0].password, undefined);
   assert.equal(sent.password, undefined);
   assert.equal(sent.adminId, undefined);
   assert.equal(sent.events[0].attendees, undefined);
   assert.deepEqual(markSynced(data, result.acceptedRecordIds).records.map(r => r.synced), [true, true]);
   assert.equal(data.records[0].synced, false);
+});
+
+test('organizer bootstrap sends its session and returns the assigned offline data', async () => {
+  const bootstrap = { students: [{ id: '1', name: 'A', section: 'S' }], events: [{ id: 'e' }] };
+  const result = await downloadOrganizerBootstrap('session-token', 'https://api.test/', async (url, options) => {
+    assert.equal(url, 'https://api.test/organizer/bootstrap');
+    assert.equal(options.headers.Authorization, 'Bearer session-token');
+    return { ok: true, json: async () => bootstrap };
+  });
+  assert.deepEqual(result, bootstrap);
 });
 
 test('failed server response leaves local data untouched', async () => {
@@ -61,9 +74,13 @@ test('remote student sign-in and password changes call the server API', async ()
 
 test('remote organizer sign-in returns a token and password/logout calls use it silently', async () => {
   let count = 0;
+  let sentLogin;
   const fetchImpl = async (url, options) => {
     count++;
-    if (url.endsWith('/auth/login')) return { ok: true, json: async () => ({ account: { id: '23-02330', role: 'admin' }, sessionToken: 'opaque-session-token' }) };
+    if (url.endsWith('/auth/login')) {
+      sentLogin = JSON.parse(options.body);
+      return { ok: true, json: async () => ({ account: { id: '23-02330', role: 'admin' }, sessionToken: 'opaque-session-token' }) };
+    }
     assert.equal(options.headers.Authorization, 'Bearer opaque-session-token');
     return { ok: true, json: async () => url.endsWith('/auth/admin/password')
       ? { ok: true, sessionToken: 'replacement-session-token' }
@@ -71,6 +88,7 @@ test('remote organizer sign-in returns a token and password/logout calls use it 
   };
   const account = await loginStudentRemotely('23-02330', 'current password', 'https://api.test', fetchImpl);
   assert.equal(account.sessionToken, 'opaque-session-token');
+  assert.deepEqual(sentLogin, { id: '23-02330', password: 'current password', client: 'mobile' });
   const updated = await changeAdminPasswordRemotely(account, account.sessionToken, 'current password', 'a much longer password', 'https://api.test', fetchImpl);
   assert.equal(updated.sessionToken, 'replacement-session-token');
   await logoutAdminRemotely(account.sessionToken, 'https://api.test', fetchImpl);

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -8,13 +8,12 @@ import * as Crypto from 'expo-crypto';
 import QRCode from 'react-native-qrcode-svg';
 import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
-import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { checkIn, createEvent, deleteEvent, localDate, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { checkIn, localDate, mergeStudentAttendance, methodLabel } from './model.mjs';
 import { downloadStudentAttendance, logoutAdminRemotely, markSynced, syncToServer } from './remote-sync.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
-const adminScreens = ['admin-home', 'admin-records', 'create-event', 'event', 'history', 'roster-import', 'scanner', 'receipt'];
+const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt'];
 const studentScreens = ['student-home', 'records', 'profile'];
 const go = (page, params = {}) => router.push({ pathname: '/[page]', params: { page, ...params } });
 const replace = (page, params = {}) => router.replace({ pathname: '/[page]', params: { page, ...params } });
@@ -24,18 +23,16 @@ const pageTitles = {
   'student-home': 'Student home',
   records: 'Attendance records',
   profile: 'Profile',
-  'create-event': 'Create event',
   event: 'Event details',
   history: 'Events',
   'admin-records': 'Attendance records',
-  'roster-import': 'Review roster',
   scanner: 'Scan Attendance',
   receipt: 'Attendance recorded',
 };
 
 function HeaderBar({ screen, user, online, eventId, adminSession }) {
   const back = ['records', 'profile'].includes(screen) ? ['student-home']
-    : ['admin-records', 'create-event', 'history', 'roster-import', 'event'].includes(screen) ? ['admin-home']
+    : ['admin-records', 'history', 'event'].includes(screen) ? ['admin-home']
       : ['scanner', 'receipt'].includes(screen) ? ['event', { eventId }]
         : null;
   const serverSession = user?.role === 'admin' && adminSession?.id === user.id && Boolean(adminSession.token);
@@ -107,16 +104,6 @@ function RecordList({ records }) {
   </Card>) : <Muted>No attendance records yet.</Muted>;
 }
 
-function EventForm({ onSave, busy, onCancel }) {
-  const [fields, setFields] = useState({ name: '', location: '', date: localDate(), time: '10:00' });
-  return <Card admin><Title>Add event</Title>
-    {[['name', 'Event name'], ['location', 'Location'], ['date', 'Date (YYYY-MM-DD)'], ['time', 'Time (HH:MM, 24-hour)']].map(([key, label]) =>
-      <Field key={key} label={label} value={fields[key]} onChangeText={value => setFields({ ...fields, [key]: value })} placeholder={key === 'date' ? '2026-09-23' : key === 'time' ? '10:00' : ''} />)}
-    <Button disabled={busy} onPress={() => onSave(fields)}>{busy ? 'Saving...' : 'Create event'}</Button>
-    <Button secondary disabled={busy} onPress={onCancel}>Cancel</Button>
-  </Card>;
-}
-
 function History({ events, onManage }) {
   const [expanded, setExpanded] = useState(null);
   return <>{events.length === 0 && <Muted>No events found.</Muted>}
@@ -157,6 +144,11 @@ export default function AppScreen() {
     catch (e) { setError(e.message || 'Could not save. Please try again.'); }
     finally { lock.current = false; setBusy(false); }
   }
+  function openManagement() {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+    if (!apiUrl) { setNotice('Management website is not configured for this app build.'); return; }
+    Linking.openURL(`${apiUrl.replace(/\/$/, '')}/manager`).catch(() => setNotice('Could not open the management website.'));
+  }
   async function refreshStudentAttendance() {
     const student = data.students.find(account => account.id === user?.id);
     if (!student?.password) throw new Error('Sign in online on this device before refreshing attendance.');
@@ -185,10 +177,11 @@ export default function AppScreen() {
   if (user && (authScreen || (adminScreens.includes(screen) && user.role !== 'admin') || (studentScreens.includes(screen) && user.role !== 'student'))) {
     return focused ? <Redirect href={`/${home}`} /> : null;
   }
-  const event = data.events.find(e => e.id === eventId);
+  const assignedEvents = user?.role === 'admin' ? data.events.filter(item => item.assignedToOrganizer) : data.events;
+  const event = assignedEvents.find(e => e.id === eventId);
   const personalRecords = user ? data.records.filter(r => r.studentId === user.id) : [];
-  const todayEvents = data.events.filter(e => e.date === localDate());
-  const currentEvent = todayEvents[0] || data.events.at(-1);
+  const todayEvents = assignedEvents.filter(e => e.date === localDate());
+  const currentEvent = todayEvents[0] || assignedEvents.at(-1);
   const todayRecords = data.records.filter(r => r.date === localDate());
   const pending = data.records.filter(r => !r.synced).length;
   const ownAttendance = event?.attendees.find(a => a.id === user?.id);
@@ -232,21 +225,18 @@ export default function AppScreen() {
   else if (screen === 'admin-home') content = <>
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
     <Metrics items={[["Present today", todayRecords.filter(r => r.status === 'PRESENT').length], ['Pending sync', pending]]} />
-    <Button icon={currentEvent ? 'scan-outline' : 'calendar-outline'} onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : go('create-event')}>{currentEvent ? 'Start scanning' : 'Create event to scan'}</Button>
-    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>No current event. Create one from Organizer tools.</Muted></Card>}
+    <Button icon={currentEvent ? 'scan-outline' : 'calendar-outline'} onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : openManagement()}>{currentEvent ? 'Start scanning' : 'Open event management'}</Button>
+    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>No event is assigned to this organizer yet. Open management to create and assign an event.</Muted></Card>}
     <RecentActivity records={data.records.slice(0, 4)} onSeeAll={() => go('admin-records')} />
     <Card><Title>Organizer tools</Title>
-      <Button onPress={() => go('create-event')}>Create event</Button>
-      <Button secondary onPress={() => go('roster-import')}>Import faculty roster</Button>
-      <Button secondary onPress={() => go('history')}>View events</Button>
+      <Button secondary onPress={() => go('history')}>View assigned events</Button>
+      <Button secondary onPress={openManagement}>Open management website</Button>
     </Card>
-    <Card><Title>Sync to server</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting. Upload rosters and events too when the server is available.</Muted>
+    <Card><Title>Sync attendance</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting. Rosters and events are managed on the website.</Muted>
       <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
   </>;
   else if (screen === 'admin-records') content = <RecordList records={data.records} />;
-  else if (screen === 'roster-import') content = <RosterImport />;
-  else if (screen === 'create-event') content = <EventForm busy={busy} onCancel={() => replace('admin-home')} onSave={fields => run(() => update(d => createEvent(d, user, fields, Crypto.randomUUID())), () => { replace('admin-home'); setNotice('Event created.'); })} />;
-  else if (screen === 'history') content = <History events={data.events} onManage={id => go('event', { eventId: id })} />;
+  else if (screen === 'history') content = <History events={assignedEvents} onManage={id => go('event', { eventId: id })} />;
   else if (screen === 'event' && event) content = <>
     <Card admin><EventSummary event={event} /><Button purple onPress={() => go('scanner', { eventId })}>Scan for this event</Button></Card>
     <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
@@ -255,7 +245,6 @@ export default function AppScreen() {
       <Button secondary onPress={() => setQrOpen(true)}>My QR</Button><Muted>Self check-in is recorded as organizer attendance.</Muted>
     </Card>
     <Card><Title>Attendees ({event.attendees.length})</Title><Attendees event={event} /></Card>
-    <LinkButton onPress={() => setConfirm({ title: 'Delete event?', message: `Delete "${event.name}"? Attendance receipts will remain in local records.`, action: () => run(() => update(d => deleteEvent(d, user, event.id)), () => { setConfirm(null); setNotice('Event deleted.'); replace('admin-home'); }) })}>Delete event</LinkButton>
   </>;
   else if (screen === 'scanner' && event) content = <Scanner data={data} busy={busy} onSave={(person, method) => {
     const id = Crypto.randomUUID();
