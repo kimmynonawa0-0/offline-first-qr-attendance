@@ -19,22 +19,16 @@ npx expo start
 Scan the development QR with Expo Go on Android. Keep your phone and computer
 on the same network. To preview in a browser, run `npm run web`.
 
-On a fresh installation, log in as **23-02330** / **BSCS-3C** and change the
-password before entering the admin dashboard. This is a prototype-only seed
-account, not a production administrator provisioning mechanism.
-An existing `DEMO-ADMIN` account is renamed to `23-02330` on restart, retaining
-its password and attendance. A conflicting existing ID stops migration without overwriting data.
-
-Import `examples/faculty-roster.csv` from the dashboard. Log out, then log in as
-**2024-00123** / **BSCS-3C** and choose a new password to enter the student dashboard.
-Both roles use the same login page. The saved account determines the role;
-Roster files cannot grant admin access.
+Both roles use the same student-ID login. The API determines the role. On a
+fresh deployment, `ADMIN_ID` and `ADMIN_PASSWORD` on the server seed the system
+manager. Open the API URL with `/manager` to import rosters, grant organizer
+access, create and assign events, and review synced attendance. The manager must
+change the initial password on first website sign-in.
 
 ## Faculty roster
 
-Import a **CSV UTF-8 (.csv)** or **Excel (.xlsx, .xls)** roster. For Excel,
-put the roster in the first worksheet and format Student ID cells as text
-before entering IDs so Excel does not discard leading zeros.
+The manager website accepts **CSV UTF-8 (.csv)** and **Excel (.xlsx, .xls)**.
+Excel rosters must use the first worksheet and text-formatted Student IDs.
 
 ```csv
 student_id,name,section,email
@@ -43,30 +37,29 @@ student_id,name,section,email
 ```
 
 Email is optional. `Student ID` and `Full Name` header spellings also work.
-The app validates the complete file, previews the first five rows and counts,
-then requires confirmation. Limits: 1 MB and 5,000 students per file. Malformed
-rows, duplicate IDs within the file, and missing required fields reject the
-whole import. Existing IDs (including admins) are skipped: names, passwords,
-roles, and sections are not overwritten. Reimporting cannot reset a password.
+The server validates and previews the file before import. Limits: 1 MB and
+5,000 students per file. Invalid rows, duplicate IDs, and missing required
+fields reject the entire import. Existing credentials are preserved.
 
 New accounts use the exact section text as their temporary password and must
 replace it with a different password of at least 12 characters. Dashboard,
 attendance, and import access remain blocked until that change is saved.
 
-The administrator website, role assignment by URL, admin requests/proofs, and
-automated password recovery are deferred. The old auto-filled email signup/reset
-flow has been removed; the left-aligned Forgot password link shows account help.
+Organizer access is granted by the system manager to a student ID already in the
+roster. Revoking access blocks new online sign-ins and syncs. Student requests
+for organizer access and email password recovery are deferred.
 
 ## Migrated flows
 
 - One student-ID login with automatic role selection, password visibility, and logout confirmation.
-- Admin faculty roster import instead of student or admin self-signup.
+- System manager website for roster import, organizer access, event assignment, and attendance review.
 - Mandatory first-login password change for both roles, persisted across app restarts.
 - Student dashboard, locally generated personal QR, enlarged QR, current event, and searchable personal attendance records.
-- Admin dashboard, today's attendance, event creation/deletion, history with expandable attendees, and recent attendance.
+- Organizer dashboard focused on assigned events, scanning, local records, and later sync.
 - Event camera QR scanning, student confirmation against the imported roster, duplicate prevention, and attendance receipt.
 - Organizer self-check-in and personal QR without account switching.
-- Network indicator, pending local records, and explicitly labeled simulated sync.
+- Online organizer sign-in downloads the assigned events and that organizer's section roster for offline scanning.
+- Offline scans stay in local SQLite until the organizer syncs; the server accepts only assigned events and roster students.
 
 Date entry uses `YYYY-MM-DD`; time uses 24-hour `HH:MM`.
 QR codes contain a student ID, like the browser prototype. An unknown ID can be
@@ -99,20 +92,17 @@ QR generation, event management, local login, and attendance capture work withou
 an API connection after the app is loaded. Test a standalone APK in airplane mode
 to validate cold launch independently of the Expo development server.
 
-The PostgreSQL API is in `../server/`; see its README for setup. Roster upload
-requires internet and organizer server credentials. It creates student accounts
-in shared PostgreSQL with salted hashes of their section as temporary passwords.
-Students use the same API to sign in and change their password, then their account
-is cached in SQLite for offline login on that phone. Student passwords are stored
-locally as plaintext in this prototype; use test data only. A shared, guessable
-section password does not verify identity. Production needs secure local
-credential storage, rate limiting, account recovery, and stronger activation.
+The API and manager website are in `../server/`; see its README for setup.
+Roster imports and event assignments are saved in shared PostgreSQL. Students
+can first log in from a different phone after the manager imports their roster.
+After initial online sign-in and password change, their account is cached for
+offline use on that phone. Student passwords are stored locally as plaintext in
+this prototype; use test data only.
 
 Configure `EXPO_PUBLIC_API_URL` in `mobile/.env.local` and restart Expo. All
 phones need a reachable API endpoint; for internet testing this must be a public
-HTTPS deployment. The source includes the PostgreSQL API, but does not deploy it
-or create a hosted database automatically. Student attendance records still
-remain on the scanning device until the organizer uploads them through Sync.
+HTTPS deployment. Organizer scans remain on the phone until the organizer taps
+Sync. Student attendance history shows server-confirmed records after refresh.
 Students can refresh their own server-synced history from Home or Records while
 online; refreshed records are cached in SQLite for offline viewing. The API
 verifies the student's ID and password and returns only records for that ID.
