@@ -19,11 +19,15 @@ npx expo start
 Scan the development QR with Expo Go on Android. Keep your phone and computer
 on the same network. To preview in a browser, run `npm run web`.
 
-Both roles use the same student-ID login. The API determines the role. On a
-fresh deployment, `ADMIN_ID` and `ADMIN_PASSWORD` on the server seed the system
-manager. Open the API URL with `/manager` to import rosters, grant organizer
-access, create and assign events, and review synced attendance. The manager must
-change the initial password on first website sign-in.
+Both app roles use the same student-ID login. The API determines whether the
+account is a student or an event organizer. On the server, `ADMIN_ID` and
+`ADMIN_PASSWORD` seed the legacy organizer account; the separate `MANAGER_ID`
+and `MANAGER_PASSWORD` seed the system-manager website account. The IDs and
+passwords must be distinct, and both passwords must be at least 12 characters.
+Open the API URL with `/manager` to import rosters, grant organizer access,
+create and assign events, and review synced attendance. The manager changes the
+initial password on first website sign-in and uses the website, not the scanner
+app.
 
 ## Faculty roster
 
@@ -61,11 +65,11 @@ for organizer access and email password recovery are deferred.
 - Online organizer sign-in downloads the assigned events and that organizer's section roster for offline scanning.
 - Offline scans stay in local SQLite until the organizer syncs; the server accepts only assigned events and roster students.
 
-Date entry uses `YYYY-MM-DD`; time uses 24-hour `HH:MM`.
-QR codes contain a student ID, like the browser prototype. An unknown ID can be
-scanned, but the organizer must enter its name before recording attendance.
-Camera access is requested only from the scanner screen. A denied permission
-blocks scanning until access is granted; there is no simulated/manual scan path.
+Date entry uses `YYYY-MM-DD`; time uses 24-hour `HH:MM`. Student QR codes
+contain a student ID, like the browser prototype. The scanner accepts IDs from
+the roster downloaded for that organizer; unknown IDs are rejected and cannot
+be manually added from the scanner. Camera access is requested only from the
+scanner screen. A denied permission blocks scanning until access is granted.
 
 ## Local data and prototype boundaries
 
@@ -88,9 +92,12 @@ Browser localStorage and mobile storage are separate: previous browser accounts
 and records are not automatically imported. Expo Go, browser previews, and
 standalone builds also have separate storage.
 
-QR generation, event management, local login, and attendance capture work without
-an API connection after the app is loaded. Test a standalone APK in airplane mode
-to validate cold launch independently of the Expo development server.
+QR generation, cached-account login, and attendance capture for previously
+downloaded assigned events work without an API connection after the app is
+loaded. Roster import, organizer access changes, event creation/assignment,
+first-time online sign-in, and attendance sync require the server. Test a
+standalone APK in airplane mode to validate cold launch independently of Expo
+Go and Metro.
 
 The API and manager website are in `../server/`; see its README for setup.
 Roster imports and event assignments are saved in shared PostgreSQL. Students
@@ -99,10 +106,13 @@ After initial online sign-in and password change, their account is cached for
 offline use on that phone. Student passwords are stored locally as plaintext in
 this prototype; use test data only.
 
-Configure `EXPO_PUBLIC_API_URL` in `mobile/.env.local` and restart Expo. All
-phones need a reachable API endpoint; for internet testing this must be a public
-HTTPS deployment. Organizer scans remain on the phone until the organizer taps
-Sync. Student attendance history shows server-confirmed records after refresh.
+For local Expo testing, configure `EXPO_PUBLIC_API_URL` in
+`mobile/.env.local` and restart Expo. For an APK, set the same variable in the
+Expo project's EAS `preview` environment; the preview build profile is bound to
+that environment. This URL is included in the app, so use the public HTTPS API
+address, never a database URL or password. All phones need a reachable API
+endpoint. Organizer scans remain on the phone until the organizer taps Sync.
+Student attendance history shows server-confirmed records after refresh.
 Students can refresh their own server-synced history from Home or Records while
 online; refreshed records are cached in SQLite for offline viewing. The API
 verifies the student's ID and password and returns only records for that ID.
@@ -125,15 +135,15 @@ any images. Shared control colors are in `src/ui.jsx`.
 | `src/app/` | Expo Router entry and screen routes |
 | `src/AppScreen.jsx` | Dashboards, events, records, receipts, and navigation |
 | `src/Auth.jsx` | Unified login, account help, required password change |
-| `src/RosterImport.jsx` | Roster picker, preview, and import confirmation |
+| `src/RosterImport.jsx` | Legacy mobile import component; not used by the current app flow |
 | `src/spreadsheet.mjs` | Excel workbook reader |
 | `src/roster.mjs` | Shared roster validation and student-only account creation |
-| `src/Scanner.jsx` | Camera permission, scanning, and manual demo entry |
+| `src/Scanner.jsx` | Camera permission, QR scanning, and roster confirmation |
 | `src/ui.jsx` | Shared native controls and existing visual theme |
 | `src/model.mjs` | Account, password, event, and attendance rules |
 | `src/storage.mjs` | Legacy AsyncStorage migration and browser persistence |
 | `src/sqlite-storage.mjs` | Native SQLite tables, migration, and serialized writes |
-| `src/remote-sync.mjs` | Roster upload, student login/password change, and attendance sync |
+| `src/remote-sync.mjs` | Remote login, student attendance refresh, password changes, and attendance sync |
 | `src/state.jsx` | Shared data/session state and connectivity |
 
 ## Checks
@@ -157,8 +167,9 @@ but do not replace real-device camera testing.
 
 ## Standalone Android APK
 
-`eas.json` includes a preview APK profile. When ready to build, sign in to your
-Expo account and link this project:
+`eas.json` includes a preview APK profile. Before building, set
+`EXPO_PUBLIC_API_URL` in the EAS `preview` environment to the deployed Render API
+URL. Then sign in to your Expo account and link this project if needed:
 
 ```sh
 npx eas-cli@latest login
