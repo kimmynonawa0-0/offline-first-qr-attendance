@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11150f">
+  <title>NORWEScan | System management</title>
+  <style>
+    :root{color-scheme:dark;--bg:#10130f;--panel:#191e17;--line:#30382d;--ink:#f1f2df;--muted:#a9b09b;--yellow:#e6c52f;--green:#668d49;--red:#e38b7b}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% -10%,#304126 0,transparent 42%),var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+    button,input,select{font:inherit}button{border:0;border-radius:10px;padding:12px 16px;background:var(--yellow);color:#15160e;font-weight:800;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.secondary{background:#2d3929;color:var(--ink);border:1px solid #536349}.danger{background:#512c27;color:#ffe7df;border:1px solid #87483e}
+    .shell{max-width:1120px;margin:auto;padding:24px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:8px 0 20px}.brand{font-weight:950;letter-spacing:.08em}.brand span{color:var(--yellow)}.tag{color:var(--muted);font-size:.85rem}
+    .panel{background:linear-gradient(145deg,#1b2119,#151914);border:1px solid var(--line);border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 18px 50px #0003}.login{max-width:440px;margin:12vh auto}.hidden{display:none!important}h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.6rem,4vw,2.35rem);line-height:1.12}h2{font-size:1.2rem}p,.muted{color:var(--muted)}label{display:block;color:var(--muted);font-size:.9rem;margin:12px 0 5px}input,select{width:100%;padding:12px;background:#10140f;color:var(--ink);border:1px solid #46503f;border-radius:9px}input[type=file]{padding:9px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:14px}.metric{font-size:1.8rem;font-weight:900;color:var(--yellow)}.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:18px 0}.tabs{display:flex;overflow:auto;gap:8px;margin:18px 0}.tabs button{white-space:nowrap}.tabs .secondary{background:transparent}.status{min-height:1.5em;color:var(--yellow);margin:10px 0}.error{color:var(--red)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:640px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 9px;font-size:.8rem}.pill.on{border-color:#63844a;color:#bde095}.pill.off{border-color:#87534b;color:#ffb6a7}.picklist{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px}.check{display:flex;align-items:center;gap:9px;padding:6px 3px;color:var(--ink)}.check input{width:auto}
+    @media(max-width:600px){.shell{padding:14px}.panel{padding:16px}.top{align-items:flex-start}.top .tag{max-width:130px;text-align:right}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top"><div><div class="brand">NORWE<span>Scan</span></div><div class="tag">CCIS attendance management</div></div><div id="account-tag" class="tag"></div></header>
+    <section id="login-panel" class="panel login">
+      <p class="tag">SYSTEM ACCESS</p><h1>Manage attendance from one place.</h1>
+      <p>Sign in with your assigned student ID and password. Your server role controls the available tools.</p>
+      <form id="login-form"><label for="login-id">Student ID</label><input id="login-id" autocomplete="username" required>
+        <label for="login-password">Password</label><input id="login-password" type="password" autocomplete="current-password" required>
+        <div class="toolbar"><button id="login-button">Sign in</button></div><div id="login-message" class="status" role="status"></div>
+      </form>
+    </section>
+    <section id="password-panel" class="panel login hidden">
+      <p class="tag">FIRST SIGN IN</p><h1>Set a private password.</h1><p>Your system manager account is still using its temporary password.</p>
+      <form id="password-form"><label for="current-password">Current password</label><input id="current-password" type="password" autocomplete="current-password" required>
+        <label for="new-password">New password, at least 12 characters</label><input id="new-password" type="password" autocomplete="new-password" minlength="12" required>
+        <label for="confirm-password">Confirm new password</label><input id="confirm-password" type="password" autocomplete="new-password" minlength="12" required>
+        <div class="toolbar"><button id="password-button">Save password</button></div><div id="password-message" class="status" role="status"></div>
+      </form>
+    </section>
+    <section id="app" class="hidden">
+      <nav class="tabs" aria-label="Management sections">
+        <button class="secondary" data-page="overview">Overview</button><button class="secondary" data-page="roster">Roster</button>
+        <button class="secondary" data-page="organizers">Organizers</button><button class="secondary" data-page="events">Events</button>
+        <button class="secondary" data-page="attendance">Attendance</button><button id="logout" class="danger">Log out</button>
+      </nav>
+      <div id="message" class="status" role="status"></div>
+      <section id="page-overview" class="page panel"></section>
+      <section id="page-roster" class="page panel hidden">
+        <h1>Import student roster</h1><p>Choose a CSV or Excel file. Required columns: student_id, name, section. Email is optional. Student IDs must be formatted as text in Excel.</p>
+        <label for="roster-file">Roster file, up to 1 MB</label><input id="roster-file" type="file" accept=".csv,.xlsx,.xls">
+        <div class="toolbar"><button id="preview-roster">Review file</button><button id="upload-roster" class="secondary hidden">Confirm import</button></div>
+        <div id="roster-preview"></div>
+      </section>
+      <section id="page-organizers" class="page panel hidden">
+        <h1>Organizer access</h1><p>Grant scanning access to a student already in the roster. Their existing student ID and password are used. Disabling access revokes online sessions.</p>
+        <div class="grid"><div><label for="student-picker">Student</label><select id="student-picker"></select></div><div class="toolbar" style="align-items:end"><button id="promote">Grant organizer access</button></div></div>
+        <div id="organizer-list"></div>
+      </section>
+      <section id="page-events" class="page panel hidden">
+        <h1>Create and assign an event</h1><p>Assigned organizers download this event and the student roster when they sign in online. They can then scan while offline and sync afterward.</p>
+        <div class="grid"><div><label for="event-name">Event name</label><input id="event-name" maxlength="200" required></div><div><label for="event-location">Location</label><input id="event-location" maxlength="200" required></div><div><label for="event-date">Date</label><input id="event-date" type="date" required></div><div><label for="event-time">Start time</label><input id="event-time" type="time" required></div></div>
+        <label>Assign active organizers</label><div id="event-organizers" class="picklist"></div><div class="toolbar"><button id="create-event">Create event</button></div>
+        <div id="event-list"></div>
+      </section>
+      <section id="page-attendance" class="page panel hidden"><h1>Attendance records</h1><div id="attendance-list"></div></section>
+    </section>
+  </main>
+  <script>
+    const $ = selector => document.querySelector(selector);
+    const state = { token: sessionStorage.getItem('manager-token'), account: null, overview: null, preview: null };
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function api(path, options = {}) {
+      let response;
+      try { response = await fetch(path, { ...options, headers: { 'Content-Type':'application/json', ...(state.token ? { Authorization:`Bearer ${state.token}` } : {}), ...options.headers } }); }
+      catch { throw new Error('Could not reach the attendance server. Check the connection and try again.'); }
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `Request failed (${response.status}).`);
+      return result;
+    }
+    function message(text, error = false) { const node = $('#message'); node.textContent = text; node.className = `status${error ? ' error' : ''}`; }
+    function showPage(name) { document.querySelectorAll('.page').forEach(page => page.classList.toggle('hidden', page.id !== `page-${name}`)); }
+    async function login(event) {
+      event.preventDefault(); $('#login-message').textContent = 'Checking account…'; $('#login-button').disabled = true;
+      try {
+        const result = await api('/auth/login', { method:'POST', body:JSON.stringify({id:$('#login-id').value.trim(),password:$('#login-password').value}) });
+        if (result.account?.role !== 'admin' || result.account.accessLevel !== 'manager' || !result.sessionToken) throw new Error('This account is not a system manager. Ask the system manager to review your access.');
+        state.token = result.sessionToken; state.account = result.account; sessionStorage.setItem('manager-token', state.token);
+        if (result.account.mustChangePassword) {
+          $('#login-panel').classList.add('hidden'); $('#password-panel').classList.remove('hidden');
+        } else await enter();
+      } catch (error) { $('#login-message').textContent = error.message; $('#login-message').classList.add('error'); }
+      finally { $('#login-button').disabled = false; $('#login-password').value = ''; }
+    }
+    $('#password-form').addEventListener('submit',async event=>{
+      event.preventDefault(); const currentPassword=$('#current-password').value, newPassword=$('#new-password').value;
+      $('#password-button').disabled=true;
+      try{
+        if(newPassword.length<12)throw new Error('Use at least 12 characters.');
+        if(newPassword!==$('#confirm-password').value)throw new Error('Passwords do not match.');
+        const result=await api('/auth/admin/password',{method:'POST',body:JSON.stringify({currentPassword,newPassword})});
+        state.token=result.sessionToken;state.account.mustChangePassword=false;sessionStorage.setItem('manager-token',state.token);await enter();
+      }catch(error){$('#password-message').textContent=error.message;$('#password-message').classList.add('error');}
+      finally{$('#password-button').disabled=false;$('#current-password').value='';$('#new-password').value='';$('#confirm-password').value='';}
+    });
+    async function enter() {
+      try {
+        state.overview = await api('/management/overview');
+        $('#login-panel').classList.add('hidden'); $('#app').classList.remove('hidden');
+        $('#account-tag').textContent = `${state.account?.name || 'System Manager'} · ${state.account?.id || ''}`;
+        render(); showPage('overview');
+      } catch (error) {
+        sessionStorage.removeItem('manager-token'); state.token = null; state.account = null;
+        $('#login-panel').classList.remove('hidden'); $('#app').classList.add('hidden');
+        $('#login-message').textContent = error.message;
+      }
+    }
+    async function refresh() { state.overview = await api('/management/overview'); render(); }
+    function render() {
+      const d = state.overview; if (!d) return;
+      $('#page-overview').innerHTML = `<h1>System overview</h1><p>Shared records from the attendance server.</p><div class="grid"><div class="panel"><div class="metric">${d.students.length}</div><div class="muted">Students</div></div><div class="panel"><div class="metric">${d.organizers.filter(x=>x.enabled && x.access_level==='organizer').length}</div><div class="muted">Active organizers</div></div><div class="panel"><div class="metric">${d.events.length}</div><div class="muted">Events</div></div><div class="panel"><div class="metric">${d.attendanceCount}</div><div class="muted">Synced check-ins</div></div></div><h2>Recent events</h2>${eventTable(d.events.slice(0,6))}<h2>Administrator activity</h2>${table(['When','Who','Action','Details'],(d.audit||[]).map(item=>`<tr><td>${esc(item.created_at)}</td><td>${esc(item.actor_name)} (${esc(item.actor_id)})</td><td>${esc(item.action.replaceAll('_',' '))}</td><td>${esc(JSON.stringify(item.details))}</td></tr>`).join(''))}`;
+      const available = d.students.filter(student => !d.organizers.some(org => org.id === student.id));
+      $('#student-picker').innerHTML = available.length ? available.map(student=>`<option value="${esc(student.id)}">${esc(student.id)} · ${esc(student.name)} (${esc(student.section)})</option>`).join('') : '<option value="">No unassigned students</option>';
+      $('#promote').disabled = !available.length;
+      $('#organizer-list').innerHTML = `<h2>Organizer accounts</h2>${table(['Student ID','Name','Access','Events','Status','Action'],d.organizers.map(org=>`<tr><td>${esc(org.id)}</td><td>${esc(org.name)}</td><td>${esc(org.access_level==='manager'?'System manager':'Organizer')}</td><td>${org.assigned_events}</td><td><span class="pill ${org.enabled?'on':'off'}">${org.enabled?'Active':'Disabled'}</span></td><td>${org.access_level==='manager'?'<span class="muted">Protected</span>':`<button class="${org.enabled?'danger':'secondary'}" data-toggle="${esc(org.id)}" data-enabled="${!org.enabled}">${org.enabled?'Revoke':'Restore'}</button>`}</td></tr>`).join(''))}`;
+      const active = d.organizers.filter(org=>org.enabled && org.access_level==='organizer');
+      $('#event-organizers').innerHTML = active.length ? active.map(org=>`<label class="check"><input type="checkbox" value="${esc(org.id)}">${esc(org.name)} · ${esc(org.id)}</label>`).join('') : '<p class="muted">Grant organizer access before assigning an event.</p>';
+      $('#create-event').disabled = !active.length;
+      $('#event-list').innerHTML = `<h2>Events</h2>${eventTable(d.events)}`;
+    }
+    function table(headings, rows) { return `<div class="tablewrap"><table><thead><tr>${headings.map(item=>`<th>${item}</th>`).join('')}</tr></thead><tbody>${rows || '<tr><td colspan="6">No records found.</td></tr>'}</tbody></table></div>`; }
+    function eventTable(events) { return table(['Event','Date / Time','Location','Organizers','Check-ins'], events.map(event=>`<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td><td>${(event.organizers||[]).map(org=>esc(org.name)).join(', ')||'—'}</td><td>${event.attendance_count ?? 0}</td></tr>`).join('')); }
+    $('#login-form').addEventListener('submit', login);
+    document.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',async()=>{
+      const name=button.dataset.page; showPage(name); message('');
+      try { if(name==='overview'||name==='organizers'||name==='events') await refresh(); if(name==='attendance') await loadAttendance(); }
+      catch(error){message(error.message,true);}
+    }));
+    $('#logout').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST',body:'{}'});}catch{} sessionStorage.clear();location.reload();});
+    $('#preview-roster').addEventListener('click',async()=>{
+      const file=$('#roster-file').files[0]; if(!file){message('Choose a roster file first.',true);return;}
+      try {
+        if(file.size>1024*1024) throw new Error('Roster file must be no larger than 1 MB.');
+        const bytes=new Uint8Array(await file.arrayBuffer()); let binary=''; for(let i=0;i<bytes.length;i+=0x8000) binary+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+        const parsed=await api('/roster/preview',{method:'POST',body:JSON.stringify({fileName:file.name,fileBase64:btoa(binary)})});
+        state.preview=parsed.students; const known=new Set(state.overview.students.map(x=>x.id));
+        const added=state.preview.filter(x=>!known.has(x.id)).length;
+        $('#roster-preview').innerHTML=`<h2>Review ${state.preview.length} students</h2><p>${added} new · ${state.preview.length-added} already in the server roster</p>${table(['Student ID','Name','Section'],state.preview.slice(0,8).map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.name)}</td><td>${esc(x.section)}</td></tr>`).join(''))}${state.preview.length>8?'<p class="muted">Showing first 8 entries.</p>':''}`;
+        $('#upload-roster').classList.remove('hidden'); message('File validated. Confirm to import it into the shared database.');
+      } catch(error){state.preview=null;$('#upload-roster').classList.add('hidden');message(error.message,true);}
+    });
+    $('#upload-roster').addEventListener('click',async()=>{
+      if(!state.preview?.length)return;
+      try { const result=await api('/roster/upload',{method:'POST',body:JSON.stringify({students:state.preview})}); state.preview=null;$('#upload-roster').classList.add('hidden');$('#roster-preview').textContent=`Imported. ${result.added} new students added; ${result.skipped} existing accounts kept.`;await refresh();message('Roster import confirmed by the server.'); }
+      catch(error){message(error.message,true);}
+    });
+    $('#promote').addEventListener('click',async()=>{const studentId=$('#student-picker').value;if(!studentId)return;
+      try{await api('/management/organizers',{method:'POST',body:JSON.stringify({studentId})});await refresh();message('Organizer access granted. Their student ID and current password remain the same.');}
+      catch(error){message(error.message,true);}
+    });
+    $('#organizer-list').addEventListener('click',async event=>{const button=event.target.closest('[data-toggle]');if(!button)return;
+      try{await api(`/management/organizers/${encodeURIComponent(button.dataset.toggle)}`,{method:'PATCH',body:JSON.stringify({enabled:button.dataset.enabled==='true'})});await refresh();message('Organizer access updated.');}
+      catch(error){message(error.message,true);}
+    });
+    $('#create-event').addEventListener('click',async()=>{
+      const event={id:crypto.randomUUID(),name:$('#event-name').value.trim(),location:$('#event-location').value.trim(),date:$('#event-date').value,time:$('#event-time').value};
+      const organizerIds=[...$('#event-organizers').querySelectorAll('input:checked')].map(input=>input.value);
+      if(!event.name||!event.location||!event.date||!event.time||!organizerIds.length){message('Complete event details and select at least one organizer.',true);return;}
+      try{await api('/management/events',{method:'POST',body:JSON.stringify({event,organizerIds})});$('#event-name').value='';$('#event-location').value='';$('#event-organizers').querySelectorAll('input').forEach(input=>input.checked=false);await refresh();message('Event created and assigned. Organizers can download it when they sign in online.');}
+      catch(error){message(error.message,true);}
+    });
+    async function loadAttendance(){const result=await api('/management/attendance');$('#attendance-list').innerHTML=table(['Student ID','Student','Event','Location','Recorded at','Method'],result.records.map(row=>`<tr><td>${esc(row.student_id)}</td><td>${esc(row.student_name)}</td><td>${esc(row.event_name)}</td><td>${esc(row.location)}</td><td>${esc(row.recorded_at)}</td><td>${esc(row.method)}</td></tr>`).join(''));}
+    if(state.token){state.account={id:'',name:'System Manager'};enter();}
+  </script>
+</body>
+</html>
