@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerAttendance, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
 
 test('remote sync sends only pending receipts and confirms only accepted IDs', async () => {
   const data = { students: [{ id: '1', name: 'A', section: 'S', password: 'private' }],
@@ -116,4 +116,22 @@ test('student attendance refresh posts credentials and returns server records', 
   assert.deepEqual(sent.body, { id: '001', password: 'private password' });
   assert.deepEqual(result, records);
   await assert.rejects(downloadStudentAttendance({ id: 'admin', role: 'admin' }, 'pw', 'https://api.test'), /student/);
+});
+
+test('organizer attendance refresh uses its session and maps server rows for the app', async () => {
+  let sentUrl;
+  const records = await downloadOrganizerAttendance({ id: '23-02330', role: 'admin' }, 'organizer-token', 'https://api.test/',
+    async (url, options) => {
+      sentUrl = url;
+      assert.equal(options.headers.Authorization, 'Bearer organizer-token');
+      return { ok: true, json: async () => ({ records: [{ id: 'r1', student_id: '001', student_name: 'A Student', event_id: 'e1', event_name: 'Assembly', location: 'Hall', recorded_at: '2026-10-17T02:30:00.000Z', method: 'scan' }] }) };
+    });
+  assert.equal(sentUrl, 'https://api.test/organizer/attendance');
+  assert.deepEqual(records[0], {
+    id: 'r1', studentId: '001', studentName: 'A Student', eventId: 'e1', event: 'Assembly', location: 'Hall',
+    recordedAt: '2026-10-17T02:30:00.000Z', date: '2026-10-17',
+    time: new Date('2026-10-17T02:30:00.000Z').toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+    status: 'PRESENT', method: 'scan',
+  });
+  await assert.rejects(downloadOrganizerAttendance({ id: '23-02330', role: 'admin' }, null, 'https://api.test'), /Sign in online/);
 });

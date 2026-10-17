@@ -88,6 +88,27 @@ export function mergeStudentAttendance(data, studentId, remoteRecords) {
   return { ...data, records: [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || '')) };
 }
 
+export function mergeOrganizerAttendance(data, remoteRecords) {
+  requireValue(Array.isArray(remoteRecords), 'The server returned an invalid attendance history.');
+  const records = new Map(data.records.map(record => [record.id, record]));
+  for (const record of remoteRecords) {
+    requireValue(record?.id && record.studentId && record.studentName && record.eventId && record.event
+      && record.recordedAt, 'The server returned an invalid attendance record.');
+    records.set(record.id, { ...record, synced: true });
+  }
+  const mergedRecords = [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || ''));
+  const events = data.events.map(event => {
+    const attendees = new Map((event.attendees || []).map(attendee => [attendee.id, attendee]));
+    for (const record of remoteRecords.filter(item => item.eventId === event.id)) {
+      attendees.set(record.studentId, {
+        id: record.studentId, name: record.studentName, time: record.time, method: record.method,
+      });
+    }
+    return { ...event, attendees: [...attendees.values()] };
+  });
+  return { ...data, events, records: mergedRecords };
+}
+
 export function sessionFor(account, role) {
   const { id, name, email, section, mustChangePassword } = account;
   return { id, name, email, section, mustChangePassword, role };

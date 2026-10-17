@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
+import { cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeOrganizerAttendance, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -65,6 +65,18 @@ test('student attendance refresh merges only that student\'s records and preserv
   assert.throws(() => mergeStudentAttendance(data, '00123', [
     { id: 'other', studentId: 'another-student', eventId: 'e1', recordedAt: '2026-09-26T10:00:00.000Z' },
   ]), /invalid attendance record/i);
+});
+
+test('organizer attendance refresh merges server records and preserves pending scans', () => {
+  const data = { ...ready(), events: [{ id: 'e1', name: 'Assembly', attendees: [] }], records: [
+    { id: 'pending', studentId: '00123', eventId: 'e1', recordedAt: '2026-10-17T02:00:00.000Z', synced: false },
+  ] };
+  const next = mergeOrganizerAttendance(data, [{ id: 'server', studentId: '00456', studentName: 'Miko Test', eventId: 'e1', event: 'Assembly', recordedAt: '2026-10-17T03:00:00.000Z', date: '2026-10-17', time: '11:00', method: 'scan' }]);
+  assert.deepEqual(next.records.map(record => record.id), ['server', 'pending']);
+  assert.equal(next.records[0].synced, true);
+  assert.equal(next.records[1].synced, false);
+  assert.deepEqual(next.events[0].attendees, [{ id: '00456', name: 'Miko Test', time: '11:00', method: 'scan' }]);
+  assert.throws(() => mergeOrganizerAttendance(data, [{ id: 'broken' }]), /invalid attendance record/i);
 });
 
 for (const role of ['student', 'admin']) test(`${role} must replace the temporary password without changing identity`, () => {

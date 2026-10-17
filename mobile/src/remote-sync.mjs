@@ -69,6 +69,39 @@ export async function downloadStudentAttendance(user, password, apiUrl, fetchImp
   return result.records;
 }
 
+export async function downloadOrganizerAttendance(user, token, apiUrl, fetchImpl = fetch) {
+  if (user?.role !== 'admin') throw new Error('Log in as an organizer to refresh attendance.');
+  if (!token) throw new Error('Sign in online as an organizer to refresh attendance.');
+  if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');
+  let response;
+  try {
+    response = await fetchImpl(`${apiUrl.replace(/\/$/, '')}/organizer/attendance`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch { throw new Error('Could not reach the attendance server. Connect to the internet and try again.'); }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Could not download organizer attendance.');
+  if (!Array.isArray(result.records)) throw new Error('Server returned an invalid attendance history.');
+  return result.records.map(record => {
+    const recordedAt = record.recorded_at || record.recordedAt;
+    return {
+      id: record.id,
+      studentId: record.student_id || record.studentId,
+      studentName: record.student_name || record.studentName,
+      eventId: record.event_id || record.eventId,
+      event: record.event_name || record.event,
+      location: record.location || '',
+      recordedAt,
+      date: record.attendance_date || record.date || recordedAt?.slice(0, 10),
+      time: record.attendance_time || record.time || (recordedAt
+        ? new Date(recordedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
+        : ''),
+      status: 'PRESENT',
+      method: record.method || 'scan',
+    };
+  });
+}
+
 export async function syncToServer(data, user, token, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'admin') throw new Error('Log in as an organizer to sync.');
   if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');

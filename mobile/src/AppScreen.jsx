@@ -9,8 +9,8 @@ import QRCode from 'react-native-qrcode-svg';
 import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import Scanner from './Scanner';
-import { checkIn, localDate, mergeStudentAttendance, methodLabel } from './model.mjs';
-import { downloadStudentAttendance, logoutAdminRemotely, markSynced, syncToServer } from './remote-sync.mjs';
+import { checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { downloadOrganizerAttendance, downloadStudentAttendance, logoutAdminRemotely, markSynced, syncToServer } from './remote-sync.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt'];
@@ -156,6 +156,12 @@ export default function AppScreen() {
     await update(current => mergeStudentAttendance(current, user.id, records));
     return records.length;
   }
+  async function refreshOrganizerAttendance() {
+    const token = adminSession?.id === user?.id ? adminSession.token : null;
+    const records = await downloadOrganizerAttendance(user, token, process.env.EXPO_PUBLIC_API_URL);
+    await update(current => mergeOrganizerAttendance(current, records));
+    return records.length;
+  }
   function requestLogout() {
     setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: async () => {
       if (user?.role === 'admin') {
@@ -235,7 +241,12 @@ export default function AppScreen() {
     <Card><Title>Sync attendance</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting. Rosters and events are managed on the website.</Muted>
       <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
   </>;
-  else if (screen === 'admin-records') content = <RecordList records={data.records} />;
+  else if (screen === 'admin-records') content = <>
+    <Button secondary disabled={busy || !online || adminSession?.id !== user.id} onPress={() => run(refreshOrganizerAttendance, count => setNotice(`Attendance refreshed. ${count} server record(s) found.`))}>
+      {busy ? 'Refreshing...' : !online ? 'Connect to refresh attendance' : adminSession?.id !== user.id ? 'Sign in online to refresh' : 'Refresh from server'}
+    </Button>
+    <RecordList records={data.records} />
+  </>;
   else if (screen === 'history') content = <History events={assignedEvents} onManage={id => go('event', { eventId: id })} />;
   else if (screen === 'event' && event) content = <>
     <Card admin><EventSummary event={event} /><Button purple onPress={() => go('scanner', { eventId })}>Scan for this event</Button></Card>
