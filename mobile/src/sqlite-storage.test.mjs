@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createSqliteRepository } from './sqlite-storage.mjs';
-import { initialData, changePassword, login } from './model.mjs';
+import { initialData, changePassword } from './model.mjs';
 import { STORAGE_KEY } from './storage.mjs';
 
 function openMemory() {
@@ -27,15 +27,40 @@ test('SQLite migrates an old snapshot once and preserves account changes and rec
   old.records.push({ id: 'r1', studentId: '23-02330', eventId: 'e1', synced: false });
   old.events.push({ id: 'e1', name: 'Assembly', location: 'Hall', date: '2026-10-06', time: '09:00', attendees: [{ id: '23-02330', name: 'Demo Organizer', time: '09:00', method: 'organizer' }] });
   let raw = JSON.stringify(old);
-  const legacy = { getItem: async key => key === STORAGE_KEY ? raw : null };
+  const legacy = { getItem: async key => key === STORAGE_KEY ? raw : null, removeItem: async () => { raw = null; } };
   const repo = createSqliteRepository(async () => db, legacy);
   assert.equal((await repo.load()).events[0].attendees.length, 1);
-  await repo.update(data => changePassword(data, login(data, '23-02330', 'BSCS-3C'), 'my-long-new-password', 'my-long-new-password'));
+  assert.equal(raw, null);
+  await repo.update(data => changePassword(data, { id: '23-02330', role: 'admin' }, 'my-long-new-password', 'my-long-new-password'));
   raw = '{corrupted after migration';
   const reloaded = await createSqliteRepository(async () => db, legacy).load();
-  assert.equal(login(reloaded, '23-02330', 'my-long-new-password').mustChangePassword, false);
+  assert.equal(reloaded.admins[0].password, undefined);
+  assert.equal(reloaded.admins[0].mustChangePassword, false);
   assert.equal(reloaded.records[0].id, 'r1');
   assert.equal(reloaded.events[0].attendees[0].id, '23-02330');
+  const storedAccount = await db.getFirstAsync("SELECT value FROM accounts WHERE key = 'admin:23-02330'");
+  assert.equal(JSON.parse(storedAccount.value).password, undefined);
+  assert.doesNotMatch(storedAccount.value, /my-long-new-password/);
+});
+
+test('SQLite upgrade removes existing plaintext passwords but preserves roster, event, and pending receipt data', async () => {
+  const db = openMemory();
+  const old = initialData();
+  old.students.push({ id: '00123', name: 'Student', section: 'BSCS-3C', email: '', password: 'legacy secret', mustChangePassword: true });
+  old.events.push({ id: 'e1', name: 'Assembly', location: 'Hall', date: '2026-10-06', time: '09:00', attendees: [] });
+  old.records.push({ id: 'pending', studentId: '00123', eventId: 'e1', synced: false });
+  let raw = JSON.stringify(old);
+  const legacy = { getItem: async () => raw, removeItem: async () => { raw = null; } };
+  const repo = createSqliteRepository(async () => db, legacy);
+  const migrated = await repo.load();
+  assert.equal(raw, null);
+  assert.equal(migrated.students[0].password, undefined);
+  assert.equal(migrated.students[0].mustChangePassword, true);
+  assert.deepEqual(migrated.records, old.records);
+  assert.equal(migrated.events[0].name, 'Assembly');
+  const storedStudent = await db.getFirstAsync("SELECT value FROM accounts WHERE key = 'student:00123'");
+  assert.equal(JSON.parse(storedStudent.value).password, undefined);
+  assert.doesNotMatch(storedStudent.value, /legacy secret/);
 });
 
 test('SQLite rolls back failed updates and keeps legacy data when migration fails', async () => {

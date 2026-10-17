@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
 import { createLocalRepository } from './local-repository';
+import { ACTIVE_USER_KEY, persistActiveUser, restoreRememberedUser } from './offline-auth.mjs';
 
 const Context = createContext(null);
 export const useApp = () => useContext(Context);
@@ -10,30 +11,43 @@ export const useApp = () => useContext(Context);
 export function AppProvider({ children }) {
   const [repository] = useState(createLocalRepository);
   const [data, setData] = useState(null);
-  const [user, setUser] = useState(null);
+  const [user, setUserState] = useState(null);
   const [adminSession, setAdminSessionState] = useState(null);
+  const [startupRoute, setStartupRoute] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [adminAuthIssue, setAdminAuthIssue] = useState('');
-  const [online, setOnline] = useState(false);
+  const [online, setOnline] = useState(null);
   const [loading, setLoading] = useState(true);
+  function applyLoadedData(next, savedSession, savedUser) {
+    let session = null;
+    let marker = null;
+    try { session = savedSession ? JSON.parse(savedSession) : null; } catch {}
+    try { marker = savedUser ? JSON.parse(savedUser) : null; } catch {}
+    const restored = Platform.OS === 'web' ? null : restoreRememberedUser(next, marker);
+    setData(next);
+    setAdminSessionState(session);
+    setUserState(restored);
+    setStartupRoute(restored ? restored.mustChangePassword ? 'change-password' : restored.role === 'admin' ? 'admin-home' : 'student-home' : null);
+  }
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const [next, savedSession] = await Promise.all([
+      const [next, savedSession, savedUser] = await Promise.all([
         repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session'),
+        Platform.OS === 'web' ? null : SecureStore.getItemAsync(ACTIVE_USER_KEY),
       ]);
-      setData(next);
-      setAdminSessionState(savedSession ? JSON.parse(savedSession) : null);
+      applyLoadedData(next, savedSession, savedUser);
     }
     catch { setError('Could not open local data. Your saved data has not been overwritten. Please retry.'); }
     finally { setLoading(false); }
   }
   useEffect(() => {
     let active = true;
-    Promise.all([repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session')]).then(([next, savedSession]) => {
-      if (active) { setData(next); setAdminSessionState(savedSession ? JSON.parse(savedSession) : null); setLoading(false); }
+    Promise.all([repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session'),
+      Platform.OS === 'web' ? null : SecureStore.getItemAsync(ACTIVE_USER_KEY)]).then(([next, savedSession, savedUser]) => {
+      if (active) { applyLoadedData(next, savedSession, savedUser); setLoading(false); }
     }).catch(() => {
       if (active) {
         setError('Could not open local data. Your saved data has not been overwritten. Please retry.');
@@ -53,6 +67,11 @@ export function AppProvider({ children }) {
     setData(next);
     return next;
   }
+  async function setUser(account) {
+    if (Platform.OS !== 'web') await persistActiveUser(SecureStore, account);
+    setUserState(account);
+    setStartupRoute(null);
+  }
   async function setAdminSession(session) {
     if (Platform.OS !== 'web') await SecureStore.setItemAsync('norwescan-admin-session', JSON.stringify(session));
     setAdminSessionState(session);
@@ -61,5 +80,6 @@ export function AppProvider({ children }) {
     if (Platform.OS !== 'web') await SecureStore.deleteItemAsync('norwescan-admin-session');
     setAdminSessionState(null);
   }
-  return <Context.Provider value={{ data, user, setUser, adminSession, setAdminSession, clearAdminSession, adminAuthIssue, setAdminAuthIssue, online, notice, setNotice, loading, error, load, update }}>{children}</Context.Provider>;
+  function consumeStartupRoute() { setStartupRoute(null); }
+  return <Context.Provider value={{ data, user, setUser, adminSession, setAdminSession, clearAdminSession, adminAuthIssue, setAdminAuthIssue, online, notice, setNotice, loading, error, load, update, startupRoute, consumeStartupRoute }}>{children}</Context.Provider>;
 }

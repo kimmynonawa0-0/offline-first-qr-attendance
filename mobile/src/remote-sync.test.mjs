@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerAttendance, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerAttendance, downloadOrganizerBootstrap, downloadStudentAttendance, isRetryableAuthFailure, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
 
 test('remote sync sends only pending receipts and confirms only accepted IDs', async () => {
   const data = { students: [{ id: '1', name: 'A', section: 'S', password: 'private' }],
@@ -70,6 +70,57 @@ test('remote student sign-in and password changes call the server API', async ()
   await changeStudentPasswordRemotely({ id: '001', role: 'student' }, 'S', 'long secure password', 'https://api.test', fetchImpl);
   assert.equal(calls, 2);
   await assert.rejects(loginStudentRemotely('001', 'S', '', fetchImpl), /EXPO_PUBLIC_API_URL/);
+});
+
+test('only network failures, timeouts, and server errors are eligible for offline login fallback', async () => {
+  await assert.rejects(loginStudentRemotely('1', 'pw', 'https://api.test', async () => { throw new Error('offline'); }), error => isRetryableAuthFailure(error));
+  await assert.rejects(loginStudentRemotely('1', 'pw', 'https://api.test', async () => { throw Object.assign(new Error('aborted'), { name: 'AbortError' }); }), error => isRetryableAuthFailure(error));
+  for (const status of [500, 503]) {
+    await assert.rejects(loginStudentRemotely('1', 'pw', 'https://api.test', async () => ({
+      ok: false, status, json: async () => ({ error: 'Temporary server failure.' }),
+    })), error => isRetryableAuthFailure(error) && error.status === status);
+  }
+  for (const status of [401, 403, 404]) {
+    await assert.rejects(loginStudentRemotely('1', 'pw', 'https://api.test', async () => ({
+      ok: false, status, json: async () => ({ error: 'Access denied.' }),
+    })), error => !isRetryableAuthFailure(error) && error.status === status);
+  }
+});
+
+test('offline organizer login silently obtains a token before syncing pending records', async () => {
+  const data = { students: [{ id: '1', name: 'A', section: 'S' }], events: [{ id: 'e', name: 'Event' }],
+    records: [{ id: 'pending', studentId: '1', eventId: 'e', synced: false }] };
+  const calls = [];
+  const result = await syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, null, 'protected-password', 'https://api.test', async (url, options) => {
+    calls.push(url);
+    if (url.endsWith('/auth/login')) return { ok: true, json: async () => ({ account: { id: 'org', role: 'admin' }, sessionToken: 'fresh-token' }) };
+    assert.equal(options.headers.Authorization, 'Bearer fresh-token');
+    assert.deepEqual(JSON.parse(options.body).records.map(record => record.id), ['pending']);
+    return { ok: true, json: async () => ({ acceptedRecordIds: ['pending'], conflictRecordIds: [] }) };
+  });
+  assert.deepEqual(calls, ['https://api.test/auth/login', 'https://api.test/sync']);
+  assert.equal(result.sessionToken, 'fresh-token');
+  assert.equal(data.records[0].synced, false);
+});
+
+test('expired organizer tokens are renewed once, and failed reauthentication leaves records pending', async () => {
+  const data = { students: [], events: [], records: [{ id: 'pending', studentId: '1', eventId: 'e', synced: false }] };
+  let syncCalls = 0;
+  const result = await syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'expired-token', 'protected-password', 'https://api.test', async (url, options) => {
+    if (url.endsWith('/auth/login')) return { ok: true, json: async () => ({ account: { id: 'org', role: 'admin' }, sessionToken: 'replacement-token' }) };
+    syncCalls++;
+    if (syncCalls === 1) return { ok: false, status: 401, json: async () => ({ error: 'Session expired.' }) };
+    assert.equal(options.headers.Authorization, 'Bearer replacement-token');
+    return { ok: true, json: async () => ({ acceptedRecordIds: ['pending'], conflictRecordIds: [] }) };
+  });
+  assert.equal(result.sessionToken, 'replacement-token');
+  assert.equal(syncCalls, 2);
+
+  await assert.rejects(syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'expired-token', 'old-password', 'https://api.test', async url => {
+    if (url.endsWith('/auth/login')) return { ok: false, status: 401, json: async () => ({ error: 'Invalid credentials.' }) };
+    return { ok: false, status: 401, json: async () => ({ error: 'Session expired.' }) };
+  }), /Pending attendance is still saved locally/);
+  assert.equal(data.records[0].synced, false);
 });
 
 test('remote organizer sign-in returns a token and password/logout calls use it silently', async () => {

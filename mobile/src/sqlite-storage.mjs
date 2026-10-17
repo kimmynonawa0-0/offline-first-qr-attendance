@@ -3,6 +3,11 @@ import { migrateData, STORAGE_KEY } from './storage.mjs';
 
 const TABLES = ['accounts', 'events', 'attendees', 'records'];
 
+function withoutAccountPasswords(data) {
+  const strip = ({ password, ...account }) => account;
+  return { ...data, admins: data.admins.map(strip), students: data.students.map(strip) };
+}
+
 function rowsFor(data) {
   return {
     accounts: [...data.admins.map(a => ({ key: `admin:${a.id}`, value: { ...a, role: 'admin' } })),
@@ -31,7 +36,7 @@ async function readData(db) {
 
 async function saveData(db, before, after) {
   const previous = before ? rowsFor(before) : Object.fromEntries(TABLES.map(table => [table, []]));
-  const next = rowsFor(after);
+  const next = rowsFor(withoutAccountPasswords(after));
   await db.withExclusiveTransactionAsync(async tx => {
     for (const table of TABLES) {
       const oldRows = new Map(previous[table].map((row, position) => [row.key, { json: JSON.stringify(row.value), position }]));
@@ -68,26 +73,31 @@ export function createSqliteRepository(openDatabase, legacyStorage) {
     }
     return db;
   }
+  async function removeLegacySnapshot() {
+    if (typeof legacyStorage.removeItem === 'function') await legacyStorage.removeItem(STORAGE_KEY);
+  }
   return {
     async load() {
       const connection = await database();
       const initialized = await connection.getFirstAsync("SELECT value FROM meta WHERE key = 'initialized'");
       if (!initialized) {
         const raw = await legacyStorage.getItem(STORAGE_KEY);
-        const data = raw === null ? initialData() : migrateData(JSON.parse(raw));
+        const data = withoutAccountPasswords(raw === null ? initialData() : migrateData(JSON.parse(raw)));
         await saveData(connection, null, data);
+        await removeLegacySnapshot();
         current = data;
       } else {
         const saved = await readData(connection);
-        current = migrateData(saved);
-        if (current !== saved) await saveData(connection, saved, current);
+        current = withoutAccountPasswords(migrateData(saved));
+        await saveData(connection, saved, current);
+        await removeLegacySnapshot();
       }
       return current;
     },
     update(transform) {
       const operation = queue.then(async () => {
         if (!current) throw new Error('Local database is not ready.');
-        const next = transform(current);
+        const next = withoutAccountPasswords(transform(current));
         await saveData(await database(), current, next);
         current = next;
         return next;

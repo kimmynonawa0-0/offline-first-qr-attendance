@@ -29,11 +29,18 @@ export function cacheRemoteStudent(data, account, password) {
     'This student ID is already registered as an organizer on this device.');
   const student = {
     id: account.id, name: account.name, section: account.section, email: account.email || '',
-    password, mustChangePassword: Boolean(account.mustChangePassword),
+    ...(typeof password === 'string' ? { password } : {}),
+    mustChangePassword: Boolean(account.mustChangePassword),
   };
   const exists = data.students.some(item => item.id === student.id);
+  const updatedStudents = data.students.map(item => {
+    if (item.id !== student.id) return item;
+    const updated = { ...item, ...student };
+    if (typeof password !== 'string') delete updated.password;
+    return updated;
+  });
   return { ...data, students: exists
-    ? data.students.map(item => item.id === student.id ? { ...item, ...student } : item)
+    ? updatedStudents
     : [...data.students, student] };
 }
 
@@ -41,15 +48,18 @@ export function cacheRemoteAdminPassword(data, adminId, password, serverAccount 
   const existing = data.admins.find(admin => admin.id === adminId);
   const student = data.students.find(account => account.id === adminId);
   const serverProfile = Object.fromEntries(Object.entries(serverAccount).filter(([, value]) => value !== undefined));
+  const savedPassword = typeof password === 'string' ? { password } : {};
   const organizer = existing || { ...(student || {}), ...serverProfile, id: adminId,
     section: serverAccount.section || student?.section || 'Organizer', email: serverAccount.email || student?.email || '',
     mustChangePassword: Boolean(serverAccount.mustChangePassword) };
+  const savedOrganizer = { ...organizer, ...savedPassword };
+  if (typeof password !== 'string') delete savedOrganizer.password;
   return {
     ...data,
     students: data.students.filter(account => account.id !== adminId),
     admins: existing
-      ? data.admins.map(admin => admin.id === adminId ? { ...admin, ...serverProfile, password } : admin)
-      : [...data.admins, { ...organizer, password }],
+      ? data.admins.map(admin => admin.id === adminId ? { ...savedOrganizer, ...serverProfile } : admin)
+      : [...data.admins, { ...savedOrganizer, ...serverProfile }],
   };
 }
 

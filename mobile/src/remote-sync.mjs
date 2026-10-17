@@ -1,16 +1,34 @@
+function requestError(message, status = null, retryable = false) {
+  const error = new Error(message);
+  error.status = status;
+  error.retryable = retryable;
+  return error;
+}
+
+export const isRetryableAuthFailure = error => Boolean(error?.retryable);
+
 async function postJson(apiUrl, path, body, fetchImpl, token) {
   if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');
   let response;
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  const timeout = controller ? setTimeout(() => controller.abort(), 60000) : null;
   try {
     response = await fetchImpl(`${apiUrl.replace(/\/$/, '')}${path}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+      ...(controller ? { signal: controller.signal } : {}),
     });
-  } catch {
-    throw new Error('Could not reach the attendance server. Connect to the internet and try again.');
+  } catch (error) {
+    const timedOut = error?.name === 'AbortError';
+    throw requestError(timedOut
+      ? 'The attendance server did not respond in time.'
+      : 'Could not reach the attendance server. Connect to the internet and try again.', null, true);
+  } finally { if (timeout) clearTimeout(timeout); }
+  let result = {};
+  try { result = await response.json(); } catch {
+    if (!response.ok) throw requestError('Server request failed.', response.status, response.status >= 500);
+    throw requestError('Server returned an unreadable response.', response.status);
   }
-  let result;
-  try { result = await response.json(); } catch { throw new Error('Server returned an unreadable response.'); }
-  if (!response.ok) throw new Error(result.error || 'Server request failed.');
+  if (!response.ok) throw requestError(result.error || 'Server request failed.', response.status, response.status >= 500);
   return result;
 }
 
@@ -109,22 +127,46 @@ export async function syncToServer(data, user, token, apiUrl, fetchImpl = fetch)
   const pending = data.records.filter(record => !record.synced);
   const pendingEventIds = new Set(pending.map(record => record.eventId));
   const pendingStudentIds = new Set(pending.map(record => record.studentId));
-  const response = await fetchImpl(`${apiUrl.replace(/\/$/, '')}/sync`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
+  const result = await postJson(apiUrl, '/sync', {
       students: data.students.filter(student => pendingStudentIds.has(student.id)).map(({ id, name, section, email }) => ({ id, name, section, email })),
       events: data.events.filter(event => pendingEventIds.has(event.id)).map(({ attendees, ...event }) => event),
       records: pending,
-    }),
-  });
-  let result;
-  try { result = await response.json(); } catch { throw new Error('Server returned an unreadable response.'); }
-  if (!response.ok) throw new Error(result.error || 'Sync failed. Records are still saved locally.');
+    }, fetchImpl, token);
   if (!Array.isArray(result.acceptedRecordIds) || !Array.isArray(result.conflictRecordIds)) {
     throw new Error('Server did not confirm which records it saved.');
   }
   return result;
+}
+
+export async function syncOrganizerWithReauth(data, user, token, password, apiUrl, fetchImpl = fetch) {
+  if (user?.role !== 'admin') throw new Error('Log in as an organizer to sync.');
+  if (!password) throw new Error('This device has no protected organizer credential. Sign in online once, then retry. Pending attendance is still saved locally.');
+  let activeToken = token;
+  const hadExistingToken = typeof token === 'string' && token.length > 0;
+  try {
+    if (!activeToken) {
+      const account = await loginStudentRemotely(user.id, password, apiUrl, fetchImpl);
+      if (account.role !== 'admin' || account.accessLevel === 'manager') {
+        throw new Error('This account is not an event organizer. Pending attendance is still saved locally.');
+      }
+      activeToken = account.sessionToken;
+    }
+    try {
+      const result = await syncToServer(data, user, activeToken, apiUrl, fetchImpl);
+      return { ...result, sessionToken: activeToken };
+    } catch (error) {
+      if (error.status !== 401 || !hadExistingToken) throw error;
+      const account = await loginStudentRemotely(user.id, password, apiUrl, fetchImpl);
+      if (account.role !== 'admin' || account.accessLevel === 'manager') {
+        throw new Error('This account is not an event organizer. Pending attendance is still saved locally.');
+      }
+      const result = await syncToServer(data, user, account.sessionToken, apiUrl, fetchImpl);
+      return { ...result, sessionToken: account.sessionToken };
+    }
+  } catch (error) {
+    if (/Pending attendance is still saved locally\./.test(error.message)) throw error;
+    throw new Error(`${error.message} Pending attendance is still saved locally. Check your connection or sign in online with the current password, then retry.`);
+  }
 }
 
 export function markSynced(data, acceptedRecordIds) {

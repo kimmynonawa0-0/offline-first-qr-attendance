@@ -76,18 +76,23 @@ scanner screen. A denied permission blocks scanning until access is granted.
 On Android and iOS, accounts, events, attendees, and attendance persist in
 SQLite (`norwescan.db`). On first launch after upgrading, the app imports the
 existing AsyncStorage snapshot under `norwe-scan-mobile-v1` into SQLite in one
-transaction. The old snapshot is kept for recovery. If migration fails, it is
-not overwritten and startup shows an error. Browser preview continues to use
-AsyncStorage because Expo SQLite web support is experimental.
-Existing version-1 accounts keep their current passwords for their next login,
-then must change them. Existing events and receipts are retained. If an ID was
+transaction, then removes the old snapshot after a successful migration. If
+migration fails, the old snapshot is not overwritten and startup shows an error.
+Native account passwords are removed from SQLite during migration and are not
+written there by future app updates. Browser preview continues to use AsyncStorage
+because Expo SQLite web support is experimental.
+Existing events, rosters, and receipts are retained. If an ID was
 stored as both a student and an admin, the admin account/credentials take
 precedence and the duplicate student account is removed. Existing admins now
 log in by student ID, not email. Prototype startup also creates the demo admin
 if `23-02330` is unused, even when older admins exist. It never resets an existing
 password or promotes a student using that ID. Remove this demo provisioning
 before production deployment.
-Closing the app preserves data; users log in again after a fresh launch.
+On native apps, a successful sign-in saves only the active user's ID and role
+in SecureStore; the app restores the matching local profile and opens its home
+screen after restart, never a scanner/camera route. Explicit logout clears the
+active session and organizer server token, but keeps the device-protected
+credential so that account can sign in offline again.
 Browser localStorage and mobile storage are separate: previous browser accounts
 and records are not automatically imported. Expo Go, browser previews, and
 standalone builds also have separate storage.
@@ -95,16 +100,24 @@ standalone builds also have separate storage.
 QR generation, cached-account login, and attendance capture for previously
 downloaded assigned events work without an API connection after the app is
 loaded. Roster import, organizer access changes, event creation/assignment,
-first-time online sign-in, and attendance sync require the server. Test a
-standalone APK in airplane mode to validate cold launch independently of Expo
-Go and Metro.
+first-time online sign-in after this update, password changes, and attendance
+sync require the server. Offline sign-in is enabled only after that account has
+successfully signed in online once on the same device; roster-imported accounts
+cannot authenticate offline until then. When online sign-in fails due to a
+network error, timeout, or temporary server error, the app may use the protected
+device credential. Invalid-password and access-denied responses never fall back
+to offline login. Test a standalone APK in airplane mode to validate cold launch
+independently of Expo Go and Metro.
 
 The API and manager website are in `../server/`; see its README for setup.
 Roster imports and event assignments are saved in shared PostgreSQL. Students
 can first log in from a different phone after the manager imports their roster.
-After initial online sign-in and password change, their account is cached for
-offline use on that phone. Student passwords are stored locally as plaintext in
-this prototype; use test data only.
+After initial online sign-in, the app stores the credential in the operating
+system's SecureStore for offline sign-in on that phone. Each device must
+authenticate online once; credentials are not shared across devices. After a
+successful password change, the protected credential is replaced. If the
+password changes on another device, an offline device may continue accepting
+its cached password until it reconnects and the server validates it.
 
 For local Expo testing, configure `EXPO_PUBLIC_API_URL` in
 `mobile/.env.local` and restart Expo. For an APK, set the same variable in the

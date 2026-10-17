@@ -1,16 +1,18 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
+import * as SecureStore from 'expo-secure-store';
 import QRCode from 'react-native-qrcode-svg';
 import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import Scanner from './Scanner';
 import { checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
-import { downloadOrganizerAttendance, downloadStudentAttendance, logoutAdminRemotely, markSynced, syncToServer } from './remote-sync.mjs';
+import { downloadOrganizerAttendance, downloadStudentAttendance, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
+import { getOfflineCredential } from './offline-auth.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt'];
@@ -126,7 +128,7 @@ function Attendees({ event }) {
 export default function AppScreen() {
   const { page: screen = 'login', eventId, recordId } = useLocalSearchParams();
   const focused = useIsFocused();
-  const { data, user, setUser, adminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice } = useApp();
+  const { data, user, setUser, adminSession, setAdminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice, startupRoute, consumeStartupRoute } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
   const [eventInfoOpen, setEventInfoOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
@@ -136,6 +138,11 @@ export default function AppScreen() {
   const [syncOpen, setSyncOpen] = useState(false);
   const lock = useRef(false);
   const { width } = useWindowDimensions();
+  useEffect(() => {
+    if (!startupRoute) return;
+    replace(startupRoute);
+    consumeStartupRoute();
+  }, [startupRoute, consumeStartupRoute]);
   const home = user?.role === 'admin' ? 'admin-home' : 'student-home';
   async function run(action, after) {
     if (lock.current) return;
@@ -150,9 +157,9 @@ export default function AppScreen() {
     Linking.openURL(`${apiUrl.replace(/\/$/, '')}/manager`).catch(() => setNotice('Could not open the management website.'));
   }
   async function refreshStudentAttendance() {
-    const student = data.students.find(account => account.id === user?.id);
-    if (!student?.password) throw new Error('Sign in online on this device before refreshing attendance.');
-    const records = await downloadStudentAttendance(user, student.password, process.env.EXPO_PUBLIC_API_URL);
+    const password = await getOfflineCredential(SecureStore, 'student', user?.id);
+    if (!password) throw new Error('Sign in online on this device before refreshing attendance.');
+    const records = await downloadStudentAttendance(user, password, process.env.EXPO_PUBLIC_API_URL);
     await update(current => mergeStudentAttendance(current, user.id, records));
     return records.length;
   }
@@ -164,17 +171,21 @@ export default function AppScreen() {
   }
   function requestLogout() {
     setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: async () => {
-      if (user?.role === 'admin') {
-        try { await logoutAdminRemotely(adminSession?.id === user.id ? adminSession.token : null, process.env.EXPO_PUBLIC_API_URL); } catch {}
-        await clearAdminSession();
+      if (user?.role === 'admin' && adminSession?.id === user.id) {
+        void logoutAdminRemotely(adminSession.token, process.env.EXPO_PUBLIC_API_URL).catch(() => {});
       }
-      setUser(null); setConfirm(null); router.replace('/');
+      try {
+        await clearAdminSession();
+        await setUser(null);
+        setConfirm(null); router.replace('/');
+      } catch { setError('Could not clear the saved sign-in safely. You are still signed in. Please try again.'); }
     } });
   }
   if (loading || !data) return <SafeAreaView style={styles.safe}><View style={{ padding: 24 }}>
     <BrandMark />{loading ? <ActivityIndicator color={colors.yellow} /> : <><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
   </View></SafeAreaView>;
   const authScreen = ['login', 'student-login', 'admin-login'].includes(screen);
+  if (startupRoute && ['scanner', 'receipt'].includes(screen)) return focused ? <Redirect href={`/${startupRoute}`} /> : null;
   const account = user && data[user.role === 'admin' ? 'admins' : 'students'].find(a => a.id === user.id);
   const mustChange = Boolean(account?.mustChangePassword);
   if (!authScreen && !user) return focused ? <Redirect href="/" /> : null;
@@ -196,10 +207,15 @@ export default function AppScreen() {
 
   let content;
   if (authScreen) content = <LoginScreen
-    onLogin={account => { setUser(account); replace(account.mustChangePassword ? 'change-password' : account.role === 'admin' ? 'admin-home' : 'student-home'); }} />;
+    onLogin={async account => { await setUser(account); replace(account.mustChangePassword ? 'change-password' : account.role === 'admin' ? 'admin-home' : 'student-home'); }} />;
   else if (screen === 'change-password') content = <ChangePasswordScreen
-    onComplete={account => { setUser(account); replace(account.role === 'admin' ? 'admin-home' : 'student-home'); }}
-    onLogout={() => { setUser(null); router.replace('/'); }} />;
+    onComplete={async account => { await setUser(account); replace(account.role === 'admin' ? 'admin-home' : 'student-home'); }}
+    onLogout={async () => {
+      if (user?.role === 'admin' && adminSession?.id === user.id) {
+        void logoutAdminRemotely(adminSession.token, process.env.EXPO_PUBLIC_API_URL).catch(() => {});
+      }
+      await clearAdminSession(); await setUser(null); router.replace('/');
+    }} />;
   else if (screen === 'student-home') content = <>
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
     <Pressable accessibilityRole="button" accessibilityLabel="Enlarge QR" onPress={() => setQrOpen(true)} style={({ pressed }) => [styles.attendanceQrCard, pressed && styles.buttonMuted]}>
@@ -302,10 +318,12 @@ export default function AppScreen() {
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
     {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
       <Muted>Your organizer session will securely authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.</Muted>
-      {adminSession?.id !== user.id && <Muted>Sign in online as an organizer before uploading.</Muted>}
       <ErrorText>{error}</ErrorText>
-      <Button disabled={busy || adminSession?.id !== user.id} onPress={() => run(async () => {
-        const result = await syncToServer(data, user, adminSession?.id === user.id ? adminSession.token : null, process.env.EXPO_PUBLIC_API_URL);
+      <Button disabled={busy} onPress={() => run(async () => {
+        const password = await getOfflineCredential(SecureStore, 'admin', user.id);
+        const result = await syncOrganizerWithReauth(data, user, adminSession?.id === user.id ? adminSession.token : null,
+          password, process.env.EXPO_PUBLIC_API_URL);
+        if (result.sessionToken) await setAdminSession({ id: user.id, token: result.sessionToken });
         await update(current => markSynced(current, result.acceptedRecordIds));
         return result;
       }, result => {
