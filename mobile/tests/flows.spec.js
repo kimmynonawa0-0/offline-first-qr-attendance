@@ -10,6 +10,7 @@ async function login(page, id, pass) {
 }
 async function changePassword(page) {
   await expect(page.getByText('Choose your password', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Current password', { exact: true })).toHaveCount(0);
   await page.getByLabel('New password', { exact: true }).fill(password);
   await page.getByLabel('Confirm new password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Save password and continue' }).click();
@@ -30,6 +31,13 @@ async function chooseFile(page, name, mimeType, buffer) {
 async function chooseCSV(page, content) {
   await chooseFile(page, 'faculty.csv', 'text/csv', Buffer.from(content));
 }
+
+test('first login changes password with only new and confirmation fields', async ({ page }) => {
+  await page.goto('/');
+  await login(page, '23-02330', 'BSCS-3C');
+  await changePassword(page);
+  await expect(page.getByText('Organizer tools', { exact: true })).toBeVisible();
+});
 
 test('unified login, required password change, CSV import and student offline login', async ({ page, context }) => {
   const errors = [];

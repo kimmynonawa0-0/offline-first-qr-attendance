@@ -80,7 +80,6 @@ export function LoginScreen({ onLogin }) {
 
 export function ChangePasswordScreen({ onComplete, onLogout }) {
   const { data, user, update, adminSession, setAdminSession, setNotice } = useApp();
-  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -89,7 +88,6 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
   return <Card>
     <Heading>Choose your password</Heading>
     <Muted>Your section password is temporary. Create one with at least 12 characters that is not your section.</Muted>
-    {process.env.EXPO_PUBLIC_API_URL && <Field label="Current password" password value={currentPassword} onChangeText={setCurrentPassword} />}
     <Field label="New password" password value={password} onChangeText={setPassword} />
     <Field label="Confirm new password" password value={confirm} onChangeText={setConfirm} />
     <ErrorText>{error}</ErrorText>
@@ -97,19 +95,22 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
       if (lock.current) return;
       lock.current = true; setBusy(true); setError('');
       try {
+        const accounts = user.role === 'admin' ? data.admins : data.students;
+        const savedPassword = accounts.find(account => account.id === user.id)?.password;
         if (user.role === 'student' && process.env.EXPO_PUBLIC_API_URL) {
+          if (!savedPassword) throw new Error('Please sign in again to update your temporary password.');
           const candidate = changePassword(data, user, password, confirm);
-          await changeStudentPasswordRemotely(user, currentPassword, password, process.env.EXPO_PUBLIC_API_URL);
+          await changeStudentPasswordRemotely(user, savedPassword, password, process.env.EXPO_PUBLIC_API_URL);
           const next = await update(() => candidate);
           const account = login(next, user.id, password);
-          setCurrentPassword('');
           onComplete(account);
           return;
         }
         if (user.role === 'admin' && process.env.EXPO_PUBLIC_API_URL && adminSession?.id === user.id) {
+          if (!savedPassword) throw new Error('Please sign in again to update your temporary password.');
           const candidate = changePassword(data, user, password, confirm);
           const updatedSession = await changeAdminPasswordRemotely(user, adminSession?.id === user.id ? adminSession.token : null,
-            currentPassword, password, process.env.EXPO_PUBLIC_API_URL);
+            savedPassword, password, process.env.EXPO_PUBLIC_API_URL);
           await setAdminSession({ id: user.id, token: updatedSession.sessionToken });
           let bootstrap = null;
           try { bootstrap = await downloadOrganizerBootstrap(updatedSession.sessionToken, process.env.EXPO_PUBLIC_API_URL); }
