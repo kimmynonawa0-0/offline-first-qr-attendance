@@ -5,7 +5,7 @@ import pg from 'pg';
 import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, validateBatch } from './sync.mjs';
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
-import { createOrganizerSessionToken, hashSessionToken, loginClientRoleError } from './auth.mjs';
+import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, rosterScopeError } from './auth.mjs';
 
 const { DATABASE_URL, ADMIN_ID, ADMIN_PASSWORD, MANAGER_ID, MANAGER_PASSWORD, PORT = '3000' } = process.env;
 if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12
@@ -254,37 +254,76 @@ const server = http.createServer(async (request, response) => {
       })) });
     }
     if (request.method === 'POST' && request.url === '/roster/upload') {
-      const manager = await organizerForRequest(request);
-      if (!manager) return send(401, { error: 'Your manager session expired or was revoked. Log in again.' });
-      if (!isManager(manager)) return send(403, { error: manager.must_change_password ? 'Change your temporary password before importing a roster.' : 'Roster imports are available to system managers only.' });
+      const account = await organizerForRequest(request);
+      if (!account) return send(401, { error: 'Your session expired or was revoked. Log in again.' });
+      if (!canImportRoster(account)) return send(403, { error: account.must_change_password ? 'Change your temporary password before importing a roster.' : 'Your organizer profile needs a roster section before importing.' });
+      const scopeError = rosterScopeError(account, body.students);
+      if (scopeError) return send(403, { error: scopeError });
       if (Array.isArray(body.students) && body.students.some(student => student?.id?.trim?.() === MANAGER_ID)) {
         return send(400, { error: 'The system manager ID cannot also be imported as a student.' });
       }
       const client = await pool.connect();
       try {
         const counts = await provisionRoster(client, body.students);
-        try { await writeAudit(client, manager.id, 'roster_import', 'student_roster', counts); }
+        try { await writeAudit(client, account.id, 'roster_import', 'student_roster', counts); }
         catch (error) { console.error('Could not record roster import in the audit log:', error); }
         return send(200, counts);
       }
       finally { client.release(); }
     }
     if (request.method === 'POST' && request.url === '/roster/preview') {
-      const manager = await organizerForRequest(request);
-      if (!manager) return send(401, { error: 'Your manager session expired or was revoked. Log in again.' });
-      if (!isManager(manager)) return send(403, { error: manager.must_change_password ? 'Change your temporary password before importing a roster.' : 'Roster imports are available to system managers only.' });
+      const account = await organizerForRequest(request);
+      if (!account) return send(401, { error: 'Your session expired or was revoked. Log in again.' });
+      if (!canImportRoster(account)) return send(403, { error: account.must_change_password ? 'Change your temporary password before importing a roster.' : 'Your organizer profile needs a roster section before importing.' });
       const students = parseRosterFile(body.fileName, body.fileBase64);
+      const scopeError = rosterScopeError(account, students);
+      if (scopeError) return send(403, { error: scopeError });
       if (students.some(student => student.id === MANAGER_ID)) return send(400, { error: 'The system manager ID cannot also be imported as a student.' });
       return send(200, { students });
+    }
+    if (request.method === 'POST' && request.url === '/organizer/events') {
+      const organizer = await organizerForRequest(request);
+      if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
+      if (!canCreateOrganizerEvent(organizer)) return send(403, { error: organizer.access_level === 'manager' ? 'System managers create and assign events at /manager.' : 'Change your temporary password before creating events.' });
+      if (!validEvent(body.event)) return send(400, { error: 'Provide a valid event name, location, date, and time.' });
+      const organizerIds = organizerEventAssigneeIds(organizer, body.organizerIds);
+      if (!organizerIds) return send(400, { error: 'Choose valid, unique active organizers for this event.' });
+      const activeOrganizers = await pool.query(`SELECT id FROM organizers WHERE id = ANY($1::text[])
+        AND enabled = TRUE AND access_level = 'organizer'`, [organizerIds]);
+      if (activeOrganizers.rows.length !== organizerIds.length) return send(400, { error: 'Every event assignee must have active organizer access.' });
+      const event = body.event;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('INSERT INTO events (id, name, location, date, time) VALUES ($1, $2, $3, $4, $5)',
+          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim()]);
+        for (const id of organizerIds) await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2)', [event.id.trim(), id]);
+        await writeAudit(client, organizer.id, 'event_created', event.id.trim(), { organizerIds });
+        await client.query('COMMIT');
+        return send(201, { event: { ...event, organizers: organizerIds.length } });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    }
+    if (request.method === 'GET' && request.url === '/organizer/available-organizers') {
+      const organizer = await organizerForRequest(request);
+      if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
+      if (organizer.access_level !== 'organizer') return send(403, { error: 'Only event organizers can use this portal.' });
+      if (organizer.must_change_password) return send(403, { error: 'Change your temporary password before creating events.' });
+      const result = await pool.query(`SELECT id, name FROM organizers
+        WHERE enabled = TRUE AND access_level = 'organizer' ORDER BY name, id`);
+      return send(200, { organizers: result.rows });
     }
     if (request.method === 'GET' && request.url === '/organizer/bootstrap') {
       const organizer = await organizerForRequest(request);
       if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
       if (organizer.access_level !== 'organizer') return send(403, { error: 'System manager accounts use the management website, not the scanning app.' });
       if (organizer.must_change_password) return send(403, { error: 'Change your temporary password before downloading the student roster.' });
-      const result = await pool.query(`SELECT e.id, e.name, e.location, e.date, e.time
-        FROM events e JOIN event_organizers eo ON eo.event_id = e.id
-        WHERE eo.organizer_id = $1 ORDER BY e.date, e.time, e.name`, [organizer.id]);
+      const result = await pool.query(`SELECT e.id, e.name, e.location, e.date, e.time,
+        (SELECT COALESCE(json_agg(json_build_object('id', assigned.id, 'name', assigned.name)), '[]')
+          FROM event_organizers links JOIN organizers assigned ON assigned.id = links.organizer_id
+          WHERE links.event_id = e.id AND assigned.enabled = TRUE) AS organizers
+        FROM events e JOIN event_organizers own ON own.event_id = e.id
+        WHERE own.organizer_id = $1 ORDER BY e.date, e.time, e.name`, [organizer.id]);
       const students = organizer.access_level === 'manager'
         ? await pool.query('SELECT id, name, section FROM students ORDER BY id')
         : await pool.query('SELECT id, name, section FROM students WHERE section = $1 ORDER BY id', [organizer.section]);

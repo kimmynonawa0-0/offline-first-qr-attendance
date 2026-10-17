@@ -10,8 +10,8 @@
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% -10%,#304126 0,transparent 42%),var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
     button,input{font:inherit}button{border:0;border-radius:10px;padding:12px 16px;background:var(--yellow);color:#15160e;font-weight:800;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.secondary{background:#2d3929;color:var(--ink);border:1px solid #536349}.danger{background:#512c27;color:#ffe7df;border:1px solid #87483e}
     .shell{max-width:1050px;margin:auto;padding:24px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:8px 0 20px}.brand{font-weight:950;letter-spacing:.08em}.brand span{color:var(--yellow)}.tag{color:var(--muted);font-size:.85rem}
-    .panel{background:linear-gradient(145deg,#1b2119,#151914);border:1px solid var(--line);border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 18px 50px #0003}.login{max-width:440px;margin:12vh auto}.hidden{display:none!important}h1,h2,p{margin-top:0}h1{font-size:clamp(1.6rem,4vw,2.35rem);line-height:1.12}h2{font-size:1.2rem}p,.muted{color:var(--muted)}label{display:block;color:var(--muted);font-size:.9rem;margin:12px 0 5px}input{width:100%;padding:12px;background:#10140f;color:var(--ink);border:1px solid #46503f;border-radius:9px}.password-field{position:relative}.password-field input{padding-right:52px}.password-toggle{position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:8px;background:transparent;color:var(--muted);border:0}.password-toggle svg{display:block;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8}
-    .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:18px 0}.status{min-height:1.5em;color:var(--yellow);margin:10px 0}.error{color:var(--red)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.metric{font-size:1.8rem;font-weight:900;color:var(--yellow)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.empty{padding:18px;border:1px dashed var(--line);border-radius:10px;color:var(--muted)}a{color:var(--yellow)}
+    .panel{background:linear-gradient(145deg,#1b2119,#151914);border:1px solid var(--line);border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 18px 50px #0003}.login{max-width:440px;margin:12vh auto}.hidden{display:none!important}h1,h2,p{margin-top:0}h1{font-size:clamp(1.6rem,4vw,2.35rem);line-height:1.12}h2{font-size:1.2rem}p,.muted{color:var(--muted)}label{display:block;color:var(--muted);font-size:.9rem;margin:12px 0 5px}input{width:100%;padding:12px;background:#10140f;color:var(--ink);border:1px solid #46503f;border-radius:9px}.password-field{position:relative}.password-field input{padding-right:52px}.password-toggle{position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:8px;background:transparent;color:var(--muted);border:0;transition:color .2s,transform .18s}.password-toggle:hover{color:var(--yellow)}.password-toggle:active{transform:translateY(-50%) scale(.9)}.password-toggle:focus-visible{outline:2px solid var(--yellow);outline-offset:1px}.password-toggle svg{display:block;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;overflow:visible}.password-toggle svg.eye-change{animation:eye-change .24s ease-out}@keyframes eye-change{0%{opacity:.35;transform:scale(.72) rotate(-8deg)}65%{opacity:1;transform:scale(1.12) rotate(3deg)}100%{transform:scale(1) rotate(0)}}
+    .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:18px 0}.tabs{display:flex;overflow:auto;gap:8px;margin:18px 0}.tabs button{white-space:nowrap}.tabs .secondary{background:transparent}.status{min-height:1.5em;color:var(--yellow);margin:10px 0}.error{color:var(--red)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.picklist{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px}.check{display:flex;align-items:center;gap:9px;padding:6px 3px;color:var(--ink)}.check input{width:auto}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.empty{padding:18px;border:1px dashed var(--line);border-radius:10px;color:var(--muted)}a{color:var(--yellow)}
     @media(max-width:600px){.shell{padding:14px}.panel{padding:16px}.top{align-items:flex-start}.top .tag{text-align:right}}
   </style>
 </head>
@@ -38,15 +38,29 @@
       </form>
     </section>
     <section id="app" class="hidden">
-      <div class="toolbar"><button id="refresh" class="secondary">Refresh assigned data</button><button id="logout" class="danger">Log out</button></div>
+      <nav class="tabs" aria-label="Organizer sections"><button class="secondary" data-page="overview">Overview</button><button class="secondary" data-page="roster">Roster</button><button class="secondary" data-page="events">Events</button><button class="secondary" data-page="attendance">Attendance</button><button id="refresh" class="secondary">Refresh</button><button id="logout" class="danger">Log out</button></nav>
       <div id="message" class="status" role="status" aria-live="polite"></div>
-      <section class="panel"><h1>Assigned events</h1><p class="muted">Only events assigned to your organizer account are shown. Attendance scanning and offline capture happen in the mobile app.</p><div id="events"></div></section>
-      <section class="panel"><h2>Synced check-ins</h2><p class="muted">This list includes server-synced attendance from your assigned events.</p><div id="attendance"></div></section>
+      <section id="page-overview" class="page panel">
+        <h1>Organizer overview</h1><p class="muted">A quick summary of your section and assigned events. System administrator activity is not shown here.</p>
+        <div id="overview-metrics" class="grid"></div><h2>Your assigned events</h2><div id="overview-events"></div>
+      </section>
+      <section id="page-roster" class="page panel hidden">
+        <h1>Section roster</h1><p class="muted">View and import students for your section only. Use CSV or Excel with student_id, name, and section columns; Excel reads the first sheet and IDs should be formatted as text. New accounts use their section as a temporary password; existing passwords are preserved.</p>
+        <label for="roster-file">Choose CSV or Excel roster</label><input id="roster-file" type="file" accept=".csv,.xlsx,.xls">
+        <div class="toolbar"><button id="preview-roster">Review roster</button><button id="upload-roster" class="secondary hidden">Confirm import</button></div><div id="roster-preview"></div><div id="roster-list"></div>
+      </section>
+      <section id="page-events" class="page panel hidden">
+        <h1>Events</h1><p class="muted">Create an event and assign it to yourself or other active organizers. Only the system manager can grant or revoke organizer access.</p>
+        <div class="grid"><div><label for="event-name">Event name</label><input id="event-name" maxlength="200"></div><div><label for="event-location">Location</label><input id="event-location" maxlength="200"></div><div><label for="event-date">Date</label><input id="event-date" type="date"></div><div><label for="event-time">Start time</label><input id="event-time" type="time"></div></div>
+        <label>Assign active organizers</label><div id="event-organizers" class="picklist"></div>
+        <div class="toolbar"><button id="create-event">Create event</button></div><div id="event-list"></div>
+      </section>
+      <section id="page-attendance" class="page panel hidden"><h1>Attendance</h1><p class="muted">Synced check-ins for events assigned to your organizer account.</p><div id="attendance-list"></div></section>
     </section>
   </main>
   <script>
     const $ = selector => document.querySelector(selector);
-    const state = { token: sessionStorage.getItem('organizer-token'), account: JSON.parse(sessionStorage.getItem('organizer-account') || 'null'), events: [], records: [] };
+    const state = { token: sessionStorage.getItem('organizer-token'), account: JSON.parse(sessionStorage.getItem('organizer-account') || 'null'), events: [], students: [], records: [], organizers: [], preview: null, currentPage:'overview' };
     const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     function setMessage(text, error = false) { $('#message').textContent = text; $('#message').className = `status${error ? ' error' : ''}`; }
     function api(path, options = {}) {
@@ -55,21 +69,34 @@
         .catch(error => { if (error instanceof TypeError) throw new Error('Could not reach the attendance server. Check your connection.'); throw error; });
     }
     function showPasswordButtons() {
-      document.querySelectorAll('[data-password-toggle]').forEach(button => button.addEventListener('click', () => {
-        const input = document.getElementById(button.dataset.passwordToggle), show = input.type === 'password';
-        input.type = show ? 'text' : 'password'; button.setAttribute('aria-label', `${show ? 'Hide' : 'Show'} password`); button.setAttribute('aria-pressed', String(show));
-      }));
+      document.querySelectorAll('[data-password-toggle]').forEach(button => {
+        const input = document.getElementById(button.dataset.passwordToggle);
+        setPasswordVisibility(button, input, false, false);
+        button.addEventListener('click', () => setPasswordVisibility(button, input, input.type === 'password'));
+      });
     }
+    function setPasswordVisibility(button, input, visible, animate = true) {
+      input.type = visible ? 'text' : 'password'; button.setAttribute('aria-label', `${visible ? 'Hide' : 'Show'} password`); button.setAttribute('aria-pressed', String(visible));
+      const svg = button.querySelector('svg');
+      svg.innerHTML = visible ? '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>' : '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path d="m3 3 18 18"/>';
+      if (animate) { svg.classList.remove('eye-change'); void svg.offsetWidth; svg.classList.add('eye-change'); }
+    }
+    function table(headings, rows) { return `<div class="tablewrap"><table><thead><tr>${headings.map(item => `<th>${item}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headings.length}">No records found.</td></tr>`}</tbody></table></div>`; }
+    function showPage(name) { state.currentPage = name; document.querySelectorAll('.page').forEach(page => page.classList.toggle('hidden', page.id !== `page-${name}`)); }
     function render() {
       $('#account-tag').textContent = `${state.account?.name || 'Organizer'} · ${state.account?.id || ''}`;
-      $('#events').innerHTML = state.events.length ? `<div class="tablewrap"><table><thead><tr><th>Event</th><th>Date / time</th><th>Location</th></tr></thead><tbody>${state.events.map(event => `<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No events are assigned to your account yet. Contact the system manager.</div>';
-      $('#attendance').innerHTML = state.records.length ? `<div class="tablewrap"><table><thead><tr><th>Student ID</th><th>Student</th><th>Event</th><th>Recorded at</th><th>Method</th></tr></thead><tbody>${state.records.map(row => `<tr><td>${esc(row.student_id)}</td><td>${esc(row.student_name)}</td><td>${esc(row.event_name)}</td><td>${esc(row.recorded_at)}</td><td>${esc(row.method)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No synced check-ins for your assigned events yet.</div>';
+      $('#overview-metrics').innerHTML = `<div class="panel"><div class="metric">${state.students.length}</div><div class="muted">Students in your section</div></div><div class="panel"><div class="metric">${state.events.length}</div><div class="muted">Assigned events</div></div><div class="panel"><div class="metric">${state.records.length}</div><div class="muted">Synced check-ins</div></div>`;
+      $('#overview-events').innerHTML = table(['Event','Date / time','Location'],state.events.slice(0,5).map(event => `<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td></tr>`).join(''));
+      $('#roster-list').innerHTML = `<h2>Students in ${esc(state.account?.section || 'your section')}</h2>${table(['Student ID','Full name','Section'],state.students.map(student => `<tr><td>${esc(student.id)}</td><td>${esc(student.name)}</td><td>${esc(student.section)}</td></tr>`).join(''))}`;
+      $('#event-list').innerHTML = `<h2>Assigned events</h2>${table(['Event','Date / time','Location','Organizers'],state.events.map(event => `<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td><td>${(event.organizers || []).map(item => esc(item.name)).join(', ')}</td></tr>`).join(''))}`;
+      $('#event-organizers').innerHTML = state.organizers.map(organizer => `<label class="check"><input type="checkbox" value="${esc(organizer.id)}" ${organizer.id === state.account?.id ? 'checked' : ''}>${esc(organizer.name)} · ${esc(organizer.id)}</label>`).join('') || '<p class="muted">No active organizers available.</p>';
+      $('#attendance-list').innerHTML = table(['Student ID','Student','Event','Location','Recorded at','Method'],state.records.map(row => `<tr><td>${esc(row.student_id)}</td><td>${esc(row.student_name)}</td><td>${esc(row.event_name)}</td><td>${esc(row.location)}</td><td>${esc(row.recorded_at)}</td><td>${esc(row.method)}</td></tr>`).join(''));
     }
     async function enter() {
       try {
-        const [bootstrap, attendance] = await Promise.all([api('/organizer/bootstrap'), api('/organizer/attendance')]);
-        state.events = bootstrap.events; state.records = attendance.records; render();
-        $('#login-panel').classList.add('hidden'); $('#password-panel').classList.add('hidden'); $('#app').classList.remove('hidden');
+        const [bootstrap, attendance, organizers] = await Promise.all([api('/organizer/bootstrap'), api('/organizer/attendance'), api('/organizer/available-organizers')]);
+        state.events = bootstrap.events; state.students = bootstrap.students; state.records = attendance.records; state.organizers = organizers.organizers; render();
+        $('#login-panel').classList.add('hidden'); $('#password-panel').classList.add('hidden'); $('#app').classList.remove('hidden'); showPage(state.currentPage);
         return true;
       } catch (error) {
         if (/session expired|revoked|Sign in/i.test(error.message)) { state.token = null; sessionStorage.removeItem('organizer-token'); sessionStorage.removeItem('organizer-account'); }
@@ -101,7 +128,48 @@
       } catch (error) { $('#password-message').textContent = error.message; $('#password-message').classList.add('error'); }
       finally { $('#password-button').disabled = false; $('#current-password').value = ''; $('#new-password').value = ''; $('#confirm-password').value = ''; }
     });
-    $('#refresh').addEventListener('click', async () => { $('#refresh').disabled = true; if (await enter()) setMessage('Assigned events and synced check-ins refreshed.'); $('#refresh').disabled = false; });
+    document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
+    async function fileToBase64(file) {
+      const bytes = new Uint8Array(await file.arrayBuffer()); let binary = '';
+      for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      return btoa(binary);
+    }
+    $('#preview-roster').addEventListener('click', async () => {
+      const file = $('#roster-file').files[0];
+      if (!file) { setMessage('Choose a roster file first.', true); return; }
+      if (file.size > 1024 * 1024) { setMessage('Roster files must be 1 MB or smaller.', true); return; }
+      $('#preview-roster').disabled = true;
+      try {
+        const result = await api('/roster/preview', { method:'POST', body:JSON.stringify({ fileName:file.name, fileBase64:await fileToBase64(file) }) });
+        state.preview = result.students; $('#upload-roster').classList.remove('hidden');
+        $('#roster-preview').innerHTML = `<p>${state.preview.length} students ready to import.</p>${table(['Student ID','Full name','Section'],state.preview.slice(0,8).map(student => `<tr><td>${esc(student.id)}</td><td>${esc(student.name)}</td><td>${esc(student.section)}</td></tr>`).join(''))}`;
+        setMessage('Review the preview, then confirm the import.');
+      } catch (error) { setMessage(error.message, true); }
+      finally { $('#preview-roster').disabled = false; }
+    });
+    $('#upload-roster').addEventListener('click', async () => {
+      if (!state.preview) return;
+      $('#upload-roster').disabled = true;
+      try {
+        const result = await api('/roster/upload', { method:'POST', body:JSON.stringify({ students:state.preview }) });
+        state.preview = null; $('#upload-roster').classList.add('hidden'); $('#roster-preview').textContent = `${result.added} new students added; ${result.skipped} existing accounts kept.`;
+        await enter(); setMessage('Roster import completed.');
+      } catch (error) { setMessage(error.message, true); }
+      finally { $('#upload-roster').disabled = false; }
+    });
+    $('#create-event').addEventListener('click', async () => {
+      const event = { id:crypto.randomUUID(), name:$('#event-name').value.trim(), location:$('#event-location').value.trim(), date:$('#event-date').value, time:$('#event-time').value };
+      if (!event.name || !event.location || !event.date || !event.time) { setMessage('Complete all event details first.', true); return; }
+      $('#create-event').disabled = true;
+      try {
+        const organizerIds = [...$('#event-organizers').querySelectorAll('input:checked')].map(input => input.value);
+        await api('/organizer/events', { method:'POST', body:JSON.stringify({ event, organizerIds }) });
+        $('#event-name').value=''; $('#event-location').value=''; $('#event-date').value=''; $('#event-time').value='';
+        await enter(); showPage('events'); setMessage('Event created and assigned to your organizer account.');
+      } catch (error) { setMessage(error.message, true); }
+      finally { $('#create-event').disabled = false; }
+    });
+    $('#refresh').addEventListener('click', async () => { $('#refresh').disabled = true; if (await enter()) setMessage('Roster, events, and attendance refreshed.'); $('#refresh').disabled = false; });
     $('#logout').addEventListener('click', async () => { try { await api('/auth/logout', { method:'POST', body:'{}' }); } catch {} state.token = null; state.account = null; sessionStorage.removeItem('organizer-token'); sessionStorage.removeItem('organizer-account'); $('#app').classList.add('hidden'); $('#password-panel').classList.add('hidden'); $('#login-panel').classList.remove('hidden'); $('#account-tag').textContent = ''; });
     showPasswordButtons();
     if (state.token && state.account?.accessLevel === 'organizer') enter();

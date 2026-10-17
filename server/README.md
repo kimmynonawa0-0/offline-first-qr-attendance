@@ -37,10 +37,12 @@ all four variables before deploying. Open
 ID/password; its first login requires a private password change. System managers
 can import CSV/Excel rosters, grant or revoke organizer access, create events,
 assign organizers, review all attendance, and inspect the audit log. Event
-organizers sign in at the service root and can see only their assigned events
-and synced check-ins for those events. Organizer tools do not include roster
-imports, access management, or event creation. Both portals provide a show/hide
-password control.
+organizers sign in at the service root. They have an overview without the
+administrator activity feed, can view/import their own section roster, create
+events and assign them to active organizers, view events assigned to them, and
+review check-ins for those events. Only the system manager can grant/revoke
+organizer access or see the global administrator activity feed. Both portals
+provide an animated show/hide password control.
 
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
