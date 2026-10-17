@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11150f">
+  <title>NORWEScan | Event organizer</title>
+  <style>
+    :root{color-scheme:dark;--bg:#10130f;--panel:#191e17;--line:#30382d;--ink:#f1f2df;--muted:#a9b09b;--yellow:#e6c52f;--green:#668d49;--red:#e38b7b}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% -10%,#304126 0,transparent 42%),var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+    button,input{font:inherit}button{border:0;border-radius:10px;padding:12px 16px;background:var(--yellow);color:#15160e;font-weight:800;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.secondary{background:#2d3929;color:var(--ink);border:1px solid #536349}.danger{background:#512c27;color:#ffe7df;border:1px solid #87483e}
+    .shell{max-width:1050px;margin:auto;padding:24px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:8px 0 20px}.brand{font-weight:950;letter-spacing:.08em}.brand span{color:var(--yellow)}.tag{color:var(--muted);font-size:.85rem}
+    .panel{background:linear-gradient(145deg,#1b2119,#151914);border:1px solid var(--line);border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 18px 50px #0003}.login{max-width:440px;margin:12vh auto}.hidden{display:none!important}h1,h2,p{margin-top:0}h1{font-size:clamp(1.6rem,4vw,2.35rem);line-height:1.12}h2{font-size:1.2rem}p,.muted{color:var(--muted)}label{display:block;color:var(--muted);font-size:.9rem;margin:12px 0 5px}input{width:100%;padding:12px;background:#10140f;color:var(--ink);border:1px solid #46503f;border-radius:9px}.password-field{position:relative}.password-field input{padding-right:52px}.password-toggle{position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:8px;background:transparent;color:var(--muted);border:0}.password-toggle svg{display:block;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8}
+    .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:18px 0}.status{min-height:1.5em;color:var(--yellow);margin:10px 0}.error{color:var(--red)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.metric{font-size:1.8rem;font-weight:900;color:var(--yellow)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.empty{padding:18px;border:1px dashed var(--line);border-radius:10px;color:var(--muted)}a{color:var(--yellow)}
+    @media(max-width:600px){.shell{padding:14px}.panel{padding:16px}.top{align-items:flex-start}.top .tag{text-align:right}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top"><div><div class="brand">NORWE<span>Scan</span></div><div class="tag">Event organizer portal</div></div><div id="account-tag" class="tag"></div></header>
+    <section id="login-panel" class="panel login">
+      <p class="tag">ORGANIZER ACCESS</p><h1>Your assigned events.</h1>
+      <p>Sign in with the student ID and password connected to your organizer access. Use the mobile app to scan attendance.</p>
+      <form id="login-form">
+        <label for="login-id">Student ID</label><input id="login-id" autocomplete="username" required>
+        <label for="login-password">Password</label><div class="password-field"><input id="login-password" type="password" autocomplete="current-password" required><button class="password-toggle" type="button" data-password-toggle="login-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+        <div class="toolbar"><button id="login-button">Sign in</button></div><div id="login-message" class="status" role="status" aria-live="polite"></div>
+      </form>
+      <p class="tag">System managers sign in at <a href="/manager">/manager</a>.</p>
+    </section>
+    <section id="password-panel" class="panel login hidden">
+      <p class="tag">FIRST SIGN IN</p><h1>Set a private password.</h1><p>Change your temporary password before opening organizer tools.</p>
+      <form id="password-form">
+        <label for="current-password">Current password</label><div class="password-field"><input id="current-password" type="password" autocomplete="current-password" required><button class="password-toggle" type="button" data-password-toggle="current-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+        <label for="new-password">New password, at least 12 characters</label><div class="password-field"><input id="new-password" type="password" autocomplete="new-password" minlength="12" required><button class="password-toggle" type="button" data-password-toggle="new-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+        <label for="confirm-password">Confirm new password</label><div class="password-field"><input id="confirm-password" type="password" autocomplete="new-password" minlength="12" required><button class="password-toggle" type="button" data-password-toggle="confirm-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+        <div class="toolbar"><button id="password-button">Save password</button></div><div id="password-message" class="status" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+    <section id="app" class="hidden">
+      <div class="toolbar"><button id="refresh" class="secondary">Refresh assigned data</button><button id="logout" class="danger">Log out</button></div>
+      <div id="message" class="status" role="status" aria-live="polite"></div>
+      <section class="panel"><h1>Assigned events</h1><p class="muted">Only events assigned to your organizer account are shown. Attendance scanning and offline capture happen in the mobile app.</p><div id="events"></div></section>
+      <section class="panel"><h2>Synced check-ins</h2><p class="muted">This list includes server-synced attendance from your assigned events.</p><div id="attendance"></div></section>
+    </section>
+  </main>
+  <script>
+    const $ = selector => document.querySelector(selector);
+    const state = { token: sessionStorage.getItem('organizer-token'), account: JSON.parse(sessionStorage.getItem('organizer-account') || 'null'), events: [], records: [] };
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    function setMessage(text, error = false) { $('#message').textContent = text; $('#message').className = `status${error ? ' error' : ''}`; }
+    function api(path, options = {}) {
+      return fetch(path, { ...options, headers: { 'Content-Type':'application/json', ...(state.token ? { Authorization:`Bearer ${state.token}` } : {}), ...options.headers } })
+        .then(async response => { const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || `Request failed (${response.status}).`); return result; })
+        .catch(error => { if (error instanceof TypeError) throw new Error('Could not reach the attendance server. Check your connection.'); throw error; });
+    }
+    function showPasswordButtons() {
+      document.querySelectorAll('[data-password-toggle]').forEach(button => button.addEventListener('click', () => {
+        const input = document.getElementById(button.dataset.passwordToggle), show = input.type === 'password';
+        input.type = show ? 'text' : 'password'; button.setAttribute('aria-label', `${show ? 'Hide' : 'Show'} password`); button.setAttribute('aria-pressed', String(show));
+      }));
+    }
+    function render() {
+      $('#account-tag').textContent = `${state.account?.name || 'Organizer'} · ${state.account?.id || ''}`;
+      $('#events').innerHTML = state.events.length ? `<div class="tablewrap"><table><thead><tr><th>Event</th><th>Date / time</th><th>Location</th></tr></thead><tbody>${state.events.map(event => `<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No events are assigned to your account yet. Contact the system manager.</div>';
+      $('#attendance').innerHTML = state.records.length ? `<div class="tablewrap"><table><thead><tr><th>Student ID</th><th>Student</th><th>Event</th><th>Recorded at</th><th>Method</th></tr></thead><tbody>${state.records.map(row => `<tr><td>${esc(row.student_id)}</td><td>${esc(row.student_name)}</td><td>${esc(row.event_name)}</td><td>${esc(row.recorded_at)}</td><td>${esc(row.method)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No synced check-ins for your assigned events yet.</div>';
+    }
+    async function enter() {
+      try {
+        const [bootstrap, attendance] = await Promise.all([api('/organizer/bootstrap'), api('/organizer/attendance')]);
+        state.events = bootstrap.events; state.records = attendance.records; render();
+        $('#login-panel').classList.add('hidden'); $('#password-panel').classList.add('hidden'); $('#app').classList.remove('hidden');
+        return true;
+      } catch (error) {
+        if (/session expired|revoked|Sign in/i.test(error.message)) { state.token = null; sessionStorage.removeItem('organizer-token'); sessionStorage.removeItem('organizer-account'); }
+        $('#login-panel').classList.remove('hidden'); $('#app').classList.add('hidden'); $('#login-message').textContent = error.message; $('#login-message').classList.add('error');
+        return false;
+      }
+    }
+    $('#login-form').addEventListener('submit', async event => {
+      event.preventDefault(); $('#login-button').disabled = true; $('#login-message').textContent = 'Checking account…'; $('#login-message').classList.remove('error');
+      try {
+        const result = await api('/auth/login', { method:'POST', body:JSON.stringify({ id:$('#login-id').value.trim(), password:$('#login-password').value, client:'organizer-web' }) });
+        if (result.account?.role === 'admin' && result.account.accessLevel === 'manager') throw new Error('System managers sign in at /manager.');
+        if (result.account?.role !== 'admin' || result.account.accessLevel !== 'organizer' || !result.sessionToken) throw new Error('This account does not have event-organizer access. Ask the system manager to grant access.');
+        state.token = result.sessionToken; state.account = result.account; sessionStorage.setItem('organizer-token', state.token); sessionStorage.setItem('organizer-account', JSON.stringify(state.account));
+        if (result.account.mustChangePassword) { $('#login-panel').classList.add('hidden'); $('#password-panel').classList.remove('hidden'); }
+        else await enter();
+      } catch (error) { $('#login-message').textContent = error.message; $('#login-message').classList.add('error'); }
+      finally { $('#login-button').disabled = false; $('#login-password').value = ''; }
+    });
+    $('#password-form').addEventListener('submit', async event => {
+      event.preventDefault(); $('#password-button').disabled = true; $('#password-message').textContent = ''; $('#password-message').classList.remove('error');
+      const currentPassword = $('#current-password').value, newPassword = $('#new-password').value;
+      try {
+        if (newPassword.length < 12) throw new Error('Use at least 12 characters.');
+        if (newPassword !== $('#confirm-password').value) throw new Error('Passwords do not match.');
+        if (newPassword === currentPassword) throw new Error('Choose a new password different from your current password.');
+        const result = await api('/auth/admin/password', { method:'POST', body:JSON.stringify({ currentPassword, newPassword }) });
+        state.token = result.sessionToken; state.account.mustChangePassword = false; sessionStorage.setItem('organizer-token', state.token); sessionStorage.setItem('organizer-account', JSON.stringify(state.account)); await enter();
+      } catch (error) { $('#password-message').textContent = error.message; $('#password-message').classList.add('error'); }
+      finally { $('#password-button').disabled = false; $('#current-password').value = ''; $('#new-password').value = ''; $('#confirm-password').value = ''; }
+    });
+    $('#refresh').addEventListener('click', async () => { $('#refresh').disabled = true; if (await enter()) setMessage('Assigned events and synced check-ins refreshed.'); $('#refresh').disabled = false; });
+    $('#logout').addEventListener('click', async () => { try { await api('/auth/logout', { method:'POST', body:'{}' }); } catch {} state.token = null; state.account = null; sessionStorage.removeItem('organizer-token'); sessionStorage.removeItem('organizer-account'); $('#app').classList.add('hidden'); $('#password-panel').classList.add('hidden'); $('#login-panel').classList.remove('hidden'); $('#account-tag').textContent = ''; });
+    showPasswordButtons();
+    if (state.token && state.account?.accessLevel === 'organizer') enter();
+    else if (state.token) { state.token = null; sessionStorage.removeItem('organizer-token'); sessionStorage.removeItem('organizer-account'); }
+  </script>
+</body>
+</html>

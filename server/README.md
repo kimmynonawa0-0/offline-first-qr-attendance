@@ -1,6 +1,7 @@
 # NORWEScan sync API
 
-The Render Node service serves both the manager website (`/manager`) and the API.
+The Render Node service serves the event-organizer portal at `/`, the system
+manager portal at `/manager`, and the API.
 Neon PostgreSQL is the shared source for rosters, organizer access, events, and
 synced attendance. Organizer phones keep a local SQLite roster and assigned event
 copies so attendance can still be scanned offline.
@@ -35,9 +36,11 @@ all four variables before deploying. Open
 `https://YOUR-RENDER-SERVICE.onrender.com/manager` and sign in with the manager
 ID/password; its first login requires a private password change. System managers
 can import CSV/Excel rosters, grant or revoke organizer access, create events,
-assign organizers, review attendance, and inspect the audit log. The unified
-login endpoint identifies the account role, but website management tools require
-the separate manager role.
+assign organizers, review all attendance, and inspect the audit log. Event
+organizers sign in at the service root and can see only their assigned events
+and synced check-ins for those events. Organizer tools do not include roster
+imports, access management, or event creation. Both portals provide a show/hide
+password control.
 
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
@@ -47,7 +50,8 @@ on the server and must never be placed in the mobile app.
 
 To make a student an organizer, import that student first, then grant organizer
 access by student ID. Their existing password remains the same. The organizer
-signs in through the app's unified login. Online login downloads the assigned
+can sign in to the root portal or the app with the same credentials. Online app
+login downloads the assigned
 events and student roster into local SQLite. The app saves each scan locally;
 Sync sends only pending records and the server checks event assignment and
 student membership before accepting them. A revoked organizer cannot sign in or

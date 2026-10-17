@@ -5,7 +5,7 @@ import pg from 'pg';
 import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, validateBatch } from './sync.mjs';
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
-import { createOrganizerSessionToken, hashSessionToken } from './auth.mjs';
+import { createOrganizerSessionToken, hashSessionToken, loginClientRoleError } from './auth.mjs';
 
 const { DATABASE_URL, ADMIN_ID, ADMIN_PASSWORD, MANAGER_ID, MANAGER_PASSWORD, PORT = '3000' } = process.env;
 if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12
@@ -119,9 +119,11 @@ const server = http.createServer(async (request, response) => {
     catch { send(503, { error: 'Database unavailable.' }); }
     return;
   }
-  if (request.method === 'GET' && ['/','/manager'].includes(request.url)) {
+  const pagePath = request.url.split('?')[0];
+  if (request.method === 'GET' && ['/','/manager'].includes(pagePath)) {
     try {
-      const page = await readFile(new URL('../public/manager.html', import.meta.url));
+      const fileName = pagePath === '/manager' ? 'manager.html' : 'organizer.html';
+      const page = await readFile(new URL(`../public/${fileName}`, import.meta.url));
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       response.end(page);
     } catch (error) {
@@ -163,9 +165,8 @@ const server = http.createServer(async (request, response) => {
         if (!validPassword) {
           return send(401, { error: 'Invalid student ID or password.' });
         }
-        if (profile.rows[0].access_level === 'manager' && body.client === 'mobile') {
-          return send(403, { error: 'System manager accounts use the management website, not the scanning app.' });
-        }
+        const roleError = loginClientRoleError(body.client, profile.rows[0].access_level);
+        if (roleError) return send(403, { error: roleError });
         const token = createOrganizerSessionToken();
         const previousToken = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
         if (previousToken) await pool.query('DELETE FROM organizer_sessions WHERE token_hash = $1 AND organizer_id = $2',
@@ -288,6 +289,17 @@ const server = http.createServer(async (request, response) => {
         ? await pool.query('SELECT id, name, section FROM students ORDER BY id')
         : await pool.query('SELECT id, name, section FROM students WHERE section = $1 ORDER BY id', [organizer.section]);
       return send(200, { events: result.rows.map(event => ({ ...event, attendees: [] })), students: students.rows });
+    }
+    if (request.method === 'GET' && request.url === '/organizer/attendance') {
+      const organizer = await organizerForRequest(request);
+      if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
+      if (organizer.access_level !== 'organizer') return send(403, { error: 'System manager accounts use the management website.' });
+      if (organizer.must_change_password) return send(403, { error: 'Change your temporary password before viewing attendance.' });
+      const result = await pool.query(`SELECT a.id, a.student_id, a.student_name, a.event_id, a.event_name,
+        a.location, a.recorded_at, a.method FROM attendance a
+        JOIN event_organizers eo ON eo.event_id = a.event_id
+        WHERE eo.organizer_id = $1 ORDER BY a.recorded_at DESC LIMIT 500`, [organizer.id]);
+      return send(200, { records: result.rows });
     }
     if (request.method === 'GET' && request.url === '/management/overview') {
       const manager = await organizerForRequest(request);
