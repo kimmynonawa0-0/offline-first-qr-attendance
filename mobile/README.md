@@ -80,7 +80,11 @@ transaction, then removes the old snapshot after a successful migration. If
 migration fails, the old snapshot is not overwritten and startup shows an error.
 Native account passwords are removed from SQLite during migration and are not
 written there by future app updates. Browser preview continues to use AsyncStorage
-because Expo SQLite web support is experimental.
+as the legacy source; the web app imports that snapshot into IndexedDB on first
+launch and removes the old copy only after the IndexedDB data has loaded
+successfully. Browser storage is separate from mobile SQLite and can be cleared
+by the user or browser, so sync attendance before clearing site data. This update
+does not change the web login or password-storage behavior.
 Existing events, rosters, and receipts are retained. If an ID was
 stored as both a student and an admin, the admin account/credentials take
 precedence and the duplicate student account is removed. Existing admins now
