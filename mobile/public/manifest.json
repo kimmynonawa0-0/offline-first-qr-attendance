@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "NORWEScan",
+  "short_name": "NORWEScan",
+  "description": "Offline-first university attendance scanning.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0b09",
+  "theme_color": "#e6c229",
+  "icons": [
+    {
+      "src": "/norwescan-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
