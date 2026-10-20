@@ -76,8 +76,12 @@ scanner screen. A denied permission blocks scanning until access is granted.
 For the PWA, build the web export with `npm run build:web`. This creates a
 versioned service worker that caches the exported app files and serves the app
 shell when offline. It does not cache API responses or replace the native APK.
-The current browser sign-in/session flow is not yet fully offline-capable after
-a browser restart; that is a separate PWA update.
+The PWA remembers the active user's ID and role in IndexedDB so the same account
+opens after a browser restart. Explicit logout clears that marker. Passwords and
+organizer bearer tokens are not part of the remembered session; organizers can
+continue scanning with locally saved data offline, but must sign in online again
+to authorize server sync after restarting the browser. Log out first, then sign
+in while connected to the server; pending attendance remains stored locally.
 
 On Android and iOS, accounts, events, attendees, and attendance persist in
 SQLite (`norwescan.db`). On first launch after upgrading, the app imports the

@@ -4,12 +4,15 @@ import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
 import { createLocalRepository } from './local-repository';
 import { ACTIVE_USER_KEY, persistActiveUser, restoreRememberedUser } from './offline-auth.mjs';
+import { createIndexedDbStorage } from './indexeddb-storage.mjs';
+import { persistWebSession, restoreWebSession } from './web-session.mjs';
 
 const Context = createContext(null);
 export const useApp = () => useContext(Context);
 
 export function AppProvider({ children }) {
   const [repository] = useState(createLocalRepository);
+  const [browserSessionStorage] = useState(() => Platform.OS === 'web' ? createIndexedDbStorage() : null);
   const [data, setData] = useState(null);
   const [user, setUserState] = useState(null);
   const [adminSession, setAdminSessionState] = useState(null);
@@ -24,7 +27,9 @@ export function AppProvider({ children }) {
     let marker = null;
     try { session = savedSession ? JSON.parse(savedSession) : null; } catch {}
     try { marker = savedUser ? JSON.parse(savedUser) : null; } catch {}
-    const restored = Platform.OS === 'web' ? null : restoreRememberedUser(next, marker);
+    const restored = Platform.OS === 'web'
+      ? restoreWebSession(next, savedUser)
+      : restoreRememberedUser(next, marker);
     setData(next);
     setAdminSessionState(session);
     setUserState(restored);
@@ -36,7 +41,7 @@ export function AppProvider({ children }) {
     try {
       const [next, savedSession, savedUser] = await Promise.all([
         repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session'),
-        Platform.OS === 'web' ? null : SecureStore.getItemAsync(ACTIVE_USER_KEY),
+        Platform.OS === 'web' ? browserSessionStorage.getItem(ACTIVE_USER_KEY) : SecureStore.getItemAsync(ACTIVE_USER_KEY),
       ]);
       applyLoadedData(next, savedSession, savedUser);
     }
@@ -55,7 +60,7 @@ export function AppProvider({ children }) {
       }
     });
     return () => { active = false; };
-  }, [repository]);
+  }, [repository, browserSessionStorage]);
   useEffect(() => NetInfo.addEventListener(state => setOnline(Boolean(state.isConnected && state.isInternetReachable !== false))), []);
   useEffect(() => {
     if (!notice) return;
@@ -68,7 +73,11 @@ export function AppProvider({ children }) {
     return next;
   }
   async function setUser(account) {
-    if (Platform.OS !== 'web') await persistActiveUser(SecureStore, account);
+    if (Platform.OS === 'web') {
+      await persistWebSession(browserSessionStorage, account);
+    } else {
+      await persistActiveUser(SecureStore, account);
+    }
     setUserState(account);
     setStartupRoute(null);
   }
