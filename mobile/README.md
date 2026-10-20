@@ -73,6 +73,12 @@ scanner screen. A denied permission blocks scanning until access is granted.
 
 ## Local data and prototype boundaries
 
+For the PWA, build the web export with `npm run build:web`. This creates a
+versioned service worker that caches the exported app files and serves the app
+shell when offline. It does not cache API responses or replace the native APK.
+The current browser sign-in/session flow is not yet fully offline-capable after
+a browser restart; that is a separate PWA update.
+
 On Android and iOS, accounts, events, attendees, and attendance persist in
 SQLite (`norwescan.db`). On first launch after upgrading, the app imports the
 existing AsyncStorage snapshot under `norwe-scan-mobile-v1` into SQLite in one
