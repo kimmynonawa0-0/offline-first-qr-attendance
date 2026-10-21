@@ -63,7 +63,7 @@ for organizer access and email password recovery are deferred.
 - Event camera QR scanning, student confirmation against the imported roster, duplicate prevention, and attendance receipt.
 - Organizer self-check-in and personal QR without account switching.
 - Online organizer sign-in downloads the assigned events and that organizer's section roster for offline scanning.
-- Offline scans stay in local SQLite until the organizer syncs; the server accepts only assigned events and roster students.
+- Offline scans stay on-device until the organizer syncs: SQLite in native apps and IndexedDB in the PWA. The server accepts only assigned events and roster students.
 
 Date entry uses `YYYY-MM-DD`; time uses 24-hour `HH:MM`. Student QR codes
 contain a student ID, like the browser prototype. The scanner accepts IDs from
@@ -95,8 +95,9 @@ written there by future app updates. Browser preview continues to use AsyncStora
 as the legacy source; the web app imports that snapshot into IndexedDB on first
 launch and removes the old copy only after the IndexedDB data has loaded
 successfully. Browser storage is separate from mobile SQLite and can be cleared
-by the user or browser, so sync attendance before clearing site data. This update
-does not change the web login or password-storage behavior.
+by the user or browser, so sync attendance before clearing site data. The PWA
+restores its active ID and role from IndexedDB, strips browser passwords during
+migration, and does not reuse native SecureStore credentials.
 Existing events, rosters, and receipts are retained. If an ID was
 stored as both a student and an admin, the admin account/credentials take
 precedence and the duplicate student account is removed. Existing admins now
@@ -109,9 +110,21 @@ in SecureStore; the app restores the matching local profile and opens its home
 screen after restart, never a scanner/camera route. Explicit logout clears the
 active session and organizer server token, but keeps the device-protected
 credential so that account can sign in offline again.
-Browser localStorage and mobile storage are separate: previous browser accounts
-and records are not automatically imported. Expo Go, browser previews, and
-standalone builds also have separate storage.
+PWA accounts, rosters, events, and attendance use IndexedDB. On first web launch,
+the app imports the previous AsyncStorage snapshot and removes it only after the
+IndexedDB save succeeds. The active browser session marker also uses IndexedDB;
+browser passwords are stripped during migration and are not persisted. PWA data
+is separate from native SQLite and can be cleared by browser/site-data settings,
+so sync pending attendance before clearing site data. Expo Go, browser previews,
+and standalone builds have separate storage.
+
+To pilot the PWA, run `npm run build:web` and deploy the generated `dist/` folder
+to a static HTTPS host. The API remains the separate Render service configured
+by `EXPO_PUBLIC_API_URL` at web-build time. The service worker caches only the
+exported app shell, not API responses; camera access and PWA installation require
+a secure context such as HTTPS (or localhost for development). Test offline
+launch and local attendance on each target browser, then reconnect and verify
+sync against the shared server. Browser storage is device- and browser-specific.
 
 QR generation, cached-account login, and attendance capture for previously
 downloaded assigned events work without an API connection after the app is
