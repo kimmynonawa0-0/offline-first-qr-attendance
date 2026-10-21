@@ -15,6 +15,7 @@ export function AppProvider({ children }) {
   const [browserSessionStorage] = useState(() => Platform.OS === 'web' ? createIndexedDbStorage() : null);
   const [data, setData] = useState(null);
   const [user, setUserState] = useState(null);
+  const [webCredential, setWebCredentialState] = useState(null);
   const [adminSession, setAdminSessionState] = useState(null);
   const [startupRoute, setStartupRoute] = useState(null);
   const [error, setError] = useState('');
@@ -78,8 +79,15 @@ export function AppProvider({ children }) {
     } else {
       await persistActiveUser(SecureStore, account);
     }
+    if (Platform.OS === 'web' && !account) setWebCredentialState(null);
     setUserState(account);
     setStartupRoute(null);
+  }
+  function setWebCredential(account, password) {
+    if (Platform.OS !== 'web') return;
+    setWebCredentialState(account && typeof password === 'string'
+      ? { id: account.id, role: account.role, password }
+      : null);
   }
   async function setAdminSession(session) {
     if (Platform.OS !== 'web') await SecureStore.setItemAsync('norwescan-admin-session', JSON.stringify(session));
@@ -90,5 +98,5 @@ export function AppProvider({ children }) {
     setAdminSessionState(null);
   }
   function consumeStartupRoute() { setStartupRoute(null); }
-  return <Context.Provider value={{ data, user, setUser, adminSession, setAdminSession, clearAdminSession, adminAuthIssue, setAdminAuthIssue, online, notice, setNotice, loading, error, load, update, startupRoute, consumeStartupRoute }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ data, user, setUser, webCredential, setWebCredential, adminSession, setAdminSession, clearAdminSession, adminAuthIssue, setAdminAuthIssue, online, notice, setNotice, loading, error, load, update, startupRoute, consumeStartupRoute }}>{children}</Context.Provider>;
 }

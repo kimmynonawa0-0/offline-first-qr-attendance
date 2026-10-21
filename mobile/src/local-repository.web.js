@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createRepository, STORAGE_KEY } from './storage.mjs';
 import { createIndexedDbStorage } from './indexeddb-storage.mjs';
+import { removeBrowserPasswords } from './web-local-data.mjs';
 
 export function createLocalRepository() {
   const indexedDb = createIndexedDbStorage();
@@ -19,8 +20,13 @@ export function createLocalRepository() {
 
   return {
     ...repository,
+    update(transform) {
+      return repository.update(current => removeBrowserPasswords(transform(current)));
+    },
     async load() {
-      const data = await repository.load();
+      let data = await repository.load();
+      const cleaned = removeBrowserPasswords(data);
+      if (cleaned !== data) data = await repository.update(() => cleaned);
       await AsyncStorage.removeItem(STORAGE_KEY);
       return data;
     },
