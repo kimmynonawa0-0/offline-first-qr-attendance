@@ -39,6 +39,18 @@ test('first login changes password with only new and confirmation fields', async
   await expect(page.getByText('Organizer tools', { exact: true })).toBeVisible();
 });
 
+test('PWA serves the app shell after an offline relaunch', async ({ page, context }) => {
+  await page.goto('/');
+  await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
+});
+
 test('unified login, required password change, CSV import and student offline login', async ({ page, context }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
