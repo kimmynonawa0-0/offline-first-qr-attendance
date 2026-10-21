@@ -13,6 +13,7 @@ import Scanner from './Scanner';
 import { checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
 import { downloadOrganizerAttendance, downloadStudentAttendance, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
+import { reauthenticateOrganizer } from './web-auth.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt'];
@@ -136,6 +137,9 @@ export default function AppScreen() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
+  const [syncPassword, setSyncPassword] = useState('');
+  const [refreshPasswordPrompt, setRefreshPasswordPrompt] = useState('');
+  const [refreshPassword, setRefreshPassword] = useState('');
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   useEffect(() => {
@@ -156,18 +160,37 @@ export default function AppScreen() {
     if (!apiUrl) { setNotice('Management website is not configured for this app build.'); return; }
     Linking.openURL(`${apiUrl.replace(/\/$/, '')}/manager`).catch(() => setNotice('Could not open the management website.'));
   }
-  async function refreshStudentAttendance() {
-    const password = await getOfflineCredential(SecureStore, 'student', user?.id);
+  async function refreshStudentAttendance(enteredPassword) {
+    const password = Platform.OS === 'web'
+      ? enteredPassword
+      : await getOfflineCredential(SecureStore, 'student', user?.id);
     if (!password) throw new Error('Sign in online on this device before refreshing attendance.');
     const records = await downloadStudentAttendance(user, password, process.env.EXPO_PUBLIC_API_URL);
     await update(current => mergeStudentAttendance(current, user.id, records));
     return records.length;
   }
-  async function refreshOrganizerAttendance() {
-    const token = adminSession?.id === user?.id ? adminSession.token : null;
+  async function refreshOrganizerAttendance(enteredPassword) {
+    let token = Platform.OS === 'web'
+      ? null
+      : adminSession?.id === user?.id ? adminSession.token : null;
+    if (Platform.OS === 'web') {
+      const session = await reauthenticateOrganizer(user, enteredPassword, process.env.EXPO_PUBLIC_API_URL);
+      token = session.sessionToken;
+      await setAdminSession({ id: user.id, token });
+    }
     const records = await downloadOrganizerAttendance(user, token, process.env.EXPO_PUBLIC_API_URL);
     await update(current => mergeOrganizerAttendance(current, records));
     return records.length;
+  }
+  function requestAttendanceRefresh(role) {
+    if (Platform.OS === 'web') {
+      setError('');
+      setRefreshPassword('');
+      setRefreshPasswordPrompt(role);
+      return;
+    }
+    const action = role === 'student' ? refreshStudentAttendance : refreshOrganizerAttendance;
+    run(action, count => setNotice(`Attendance refreshed. ${count} server record(s) found.`));
   }
   function requestLogout() {
     setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: async () => {
@@ -228,12 +251,12 @@ export default function AppScreen() {
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>My check-ins</Text><Text style={styles.summaryValue}>{personalRecords.length}</Text><Text style={styles.summaryDetail}>Saved on this device</Text></View>
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>Latest record</Text><Text numberOfLines={2} style={styles.summaryDetail}>{latestPersonalRecord?.event || 'No record yet'}</Text>{latestPersonalRecord && <Muted>{latestPersonalRecord.date} / {latestPersonalRecord.time}</Muted>}</View>
     </Row>
-    <Button secondary disabled={busy || !online} onPress={() => run(refreshStudentAttendance, count => setNotice(`Attendance refreshed. ${count} synced record(s) found.`))}>
+    <Button secondary disabled={busy || !online} onPress={() => requestAttendanceRefresh('student')}>
       {busy ? 'Refreshing...' : online ? 'Refresh my attendance' : 'Connect to refresh attendance'}
     </Button>
   </>;
   else if (screen === 'records') content = <><Field label="Search event" value={query} onChangeText={setQuery} />
-    <Button secondary disabled={busy || !online} onPress={() => run(refreshStudentAttendance, count => setNotice(`Attendance refreshed. ${count} synced record(s) found.`))}>
+    <Button secondary disabled={busy || !online} onPress={() => requestAttendanceRefresh('student')}>
       {busy ? 'Refreshing...' : online ? 'Refresh from server' : 'Offline / showing saved records'}
     </Button>
     <RecordList records={personalRecords.filter(r => `${r.event} ${r.date}`.toLowerCase().includes(query.toLowerCase()))} /></>;
@@ -258,8 +281,8 @@ export default function AppScreen() {
       <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
   </>;
   else if (screen === 'admin-records') content = <>
-    <Button secondary disabled={busy || !online || adminSession?.id !== user.id} onPress={() => run(refreshOrganizerAttendance, count => setNotice(`Attendance refreshed. ${count} server record(s) found.`))}>
-      {busy ? 'Refreshing...' : !online ? 'Connect to refresh attendance' : adminSession?.id !== user.id ? 'Sign in online to refresh' : 'Refresh from server'}
+    <Button secondary disabled={busy || !online || (Platform.OS !== 'web' && adminSession?.id !== user.id)} onPress={() => requestAttendanceRefresh('admin')}>
+      {busy ? 'Refreshing...' : !online ? 'Connect to refresh attendance' : Platform.OS !== 'web' && adminSession?.id !== user.id ? 'Sign in online to refresh' : 'Refresh from server'}
     </Button>
     <RecordList records={data.records} />
   </>;
@@ -316,20 +339,40 @@ export default function AppScreen() {
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)}><EventSummary event={currentEvent} /></ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
-    {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
-      <Muted>Your organizer session will securely authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.</Muted>
+    {refreshPasswordPrompt && <ModalFrame title="Verify to refresh" onClose={() => { setRefreshPasswordPrompt(''); setRefreshPassword(''); }} busy={busy}>
+      <Muted>Enter your current password to securely request attendance from the server. It is used for this request only.</Muted>
+      <Field label="Password" password value={refreshPassword} onChangeText={setRefreshPassword} />
       <ErrorText>{error}</ErrorText>
-      <Button disabled={busy} onPress={() => run(async () => {
-        const password = await getOfflineCredential(SecureStore, 'admin', user.id);
-        const result = await syncOrganizerWithReauth(data, user, adminSession?.id === user.id ? adminSession.token : null,
+      <Button disabled={busy || !refreshPassword} onPress={() => run(
+        () => refreshPasswordPrompt === 'student'
+          ? refreshStudentAttendance(refreshPassword)
+          : refreshOrganizerAttendance(refreshPassword),
+        count => {
+          setRefreshPasswordPrompt('');
+          setRefreshPassword('');
+          setNotice(`Attendance refreshed. ${count} server record(s) found.`);
+        },
+      )}>{busy ? 'Verifying...' : 'Verify and refresh'}</Button>
+    </ModalFrame>}
+    {syncOpen && <ModalFrame title="Upload to server" onClose={() => { setSyncOpen(false); setSyncPassword(''); }} busy={busy}>
+      <Muted>{Platform.OS === 'web'
+        ? 'Enter your current organizer password to authorize this upload. It is used for this request only.'
+        : 'Your organizer session will securely authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.'}</Muted>
+      {Platform.OS === 'web' && <Field label="Organizer password" password value={syncPassword} onChangeText={setSyncPassword} />}
+      <ErrorText>{error}</ErrorText>
+      <Button disabled={busy || (Platform.OS === 'web' && !syncPassword)} onPress={() => run(async () => {
+        const password = Platform.OS === 'web' ? syncPassword : await getOfflineCredential(SecureStore, 'admin', user.id);
+        const token = Platform.OS === 'web' ? null : adminSession?.id === user.id ? adminSession.token : null;
+        const result = await syncOrganizerWithReauth(data, user, token,
           password, process.env.EXPO_PUBLIC_API_URL);
         if (result.sessionToken) await setAdminSession({ id: user.id, token: result.sessionToken });
         await update(current => markSynced(current, result.acceptedRecordIds));
         return result;
       }, result => {
         setSyncOpen(false);
+        setSyncPassword('');
         setNotice(`Upload complete. ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
-      })}>{busy ? 'Uploading...' : 'Upload data'}</Button>
+      })}>{busy ? 'Uploading...' : 'Verify and upload'}</Button>
     </ModalFrame>}
   </SafeAreaView>;
 }

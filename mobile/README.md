@@ -77,11 +77,13 @@ For the PWA, build the web export with `npm run build:web`. This creates a
 versioned service worker that caches the exported app files and serves the app
 shell when offline. It does not cache API responses or replace the native APK.
 The PWA remembers the active user's ID and role in IndexedDB so the same account
-opens after a browser restart. Explicit logout clears that marker. Passwords and
-organizer bearer tokens are not part of the remembered session; organizers can
-continue scanning with locally saved data offline, but must sign in online again
-to authorize server sync after restarting the browser. Log out first, then sign
-in while connected to the server; pending attendance remains stored locally.
+opens after a browser restart. Explicit logout clears that marker. Browser
+passwords are removed from IndexedDB during migration and are kept only in memory
+while the signed-in page is open. The PWA asks for the current password whenever
+it needs to refresh server attendance or upload organizer scans; it does not
+persist organizer bearer tokens. Locally saved events, rosters, and pending
+attendance remain available offline. Starting a new session after logout requires
+an online sign-in.
 
 On Android and iOS, accounts, events, attendees, and attendance persist in
 SQLite (`norwescan.db`). On first launch after upgrading, the app imports the
