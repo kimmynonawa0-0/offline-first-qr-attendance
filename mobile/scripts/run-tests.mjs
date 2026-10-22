@@ -6,6 +6,7 @@ const testFiles = [
   '../src/web-session.test.mjs',
   '../src/web-auth.test.mjs',
   '../src/web-local-data.test.mjs',
+  '../src/web-api-url.test.mjs',
 ];
 
 for (const testFile of testFiles) {

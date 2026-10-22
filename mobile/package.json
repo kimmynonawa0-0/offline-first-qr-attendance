@@ -39,6 +39,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:web": "expo export --platform web && node scripts/generate-service-worker.mjs",
+    "build:web:release": "node scripts/verify-web-api-url.mjs && expo export --platform web --clear && node scripts/generate-service-worker.mjs",
     "test": "node scripts/run-tests.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
