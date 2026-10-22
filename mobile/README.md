@@ -118,13 +118,19 @@ is separate from native SQLite and can be cleared by browser/site-data settings,
 so sync pending attendance before clearing site data. Expo Go, browser previews,
 and standalone builds have separate storage.
 
-To pilot the PWA, run `npm run build:web` and deploy the generated `dist/` folder
-to a static HTTPS host. The API remains the separate Render service configured
-by `EXPO_PUBLIC_API_URL` at web-build time. The service worker caches only the
-exported app shell, not API responses; camera access and PWA installation require
-a secure context such as HTTPS (or localhost for development). Test offline
-launch and local attendance on each target browser, then reconnect and verify
-sync against the shared server. Browser storage is device- and browser-specific.
+To pilot the PWA on Render, create a **Static Site** from this repository with
+root directory `mobile`, build command `npm ci && npm run build:web:release`, and
+publish directory `dist`. Set the static site's `EXPO_PUBLIC_API_URL` to the API
+root, such as `https://norwescan-api.onrender.com`; do not append `/health` or
+`/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Render
+assigns to the static site, then redeploy the API. The release build fails early
+if the API URL is missing, not HTTPS, or contains a route path.
+
+The service worker caches only the exported app shell, not API responses.
+Camera access and PWA installation require a secure context such as HTTPS (or
+localhost for development). Test offline launch and local attendance on each
+target browser, then reconnect and verify sync against the shared server.
+Browser storage is device- and browser-specific.
 
 QR generation, cached-account login, and attendance capture for previously
 downloaded assigned events work without an API connection after the app is
