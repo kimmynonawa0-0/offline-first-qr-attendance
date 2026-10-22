@@ -6,6 +6,7 @@ import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, valid
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
 import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, rosterScopeError } from './auth.mjs';
+import { corsDecision, parseWebOrigins } from './cors.mjs';
 
 const { DATABASE_URL, ADMIN_ID, ADMIN_PASSWORD, MANAGER_ID, MANAGER_PASSWORD, PORT = '3000' } = process.env;
 if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12
@@ -14,6 +15,7 @@ if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12
   throw new Error('Set DATABASE_URL, distinct organizer and manager IDs/passwords; both passwords need at least 12 characters.');
 }
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
+const allowedWebOrigins = parseWebOrigins(process.env.WEB_ORIGINS);
 await pool.query(`CREATE TABLE IF NOT EXISTS organizers (
   id TEXT PRIMARY KEY, salt TEXT NOT NULL, password_hash TEXT NOT NULL,
   credential_initialized BOOLEAN NOT NULL DEFAULT FALSE,
@@ -114,6 +116,14 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     response.end(JSON.stringify(result));
   };
+  const cors = corsDecision(request.headers.origin, allowedWebOrigins);
+  if (!cors.allowed) return send(403, { error: 'This web origin is not allowed to use the attendance API.' });
+  for (const [name, value] of Object.entries(cors.headers)) response.setHeader(name, value);
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204);
+    response.end();
+    return;
+  }
   if (request.method === 'GET' && request.url === '/health') {
     try { await pool.query('SELECT 1'); send(200, { ok: true }); }
     catch { send(503, { error: 'Database unavailable.' }); }

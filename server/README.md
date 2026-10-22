@@ -50,6 +50,16 @@ For testing across different networks, deploy this API behind HTTPS and point it
 at a managed PostgreSQL database. The database URL and organizer password stay
 on the server and must never be placed in the mobile app.
 
+For a separately hosted PWA, set the Render API environment variable
+`WEB_ORIGINS` to the exact HTTPS origin serving the PWA, for example
+`https://norwescan-pwa.onrender.com` (no path or trailing slash). Multiple
+origins may be comma-separated. Add local origins explicitly for development,
+such as `http://localhost:8081,http://127.0.0.1:4173`; the API does not allow
+unconfigured browser origins. It handles JSON preflight requests and permits only
+`GET`, `POST`, and the `Content-Type` and `Authorization` headers used by the
+app. This is browser cross-origin configuration, not authentication; API routes
+still enforce account and organizer-session authorization.
+
 To make a student an organizer, import that student first, then grant organizer
 access by student ID. Their existing password remains the same. The organizer
 can sign in to the root portal or the app with the same credentials. Online app
