@@ -9,6 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import QRCode from 'react-native-qrcode-svg';
 import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
+import RosterImport from './RosterImport';
 import Scanner from './Scanner';
 import { checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
 import { downloadOrganizerAttendance, downloadStudentAttendance, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
@@ -16,7 +17,7 @@ import { getOfflineCredential } from './offline-auth.mjs';
 import { reauthenticateOrganizer } from './web-auth.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
-const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt'];
+const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt', 'roster-import'];
 const studentScreens = ['student-home', 'records', 'profile'];
 const go = (page, params = {}) => router.push({ pathname: '/[page]', params: { page, ...params } });
 const replace = (page, params = {}) => router.replace({ pathname: '/[page]', params: { page, ...params } });
@@ -29,13 +30,14 @@ const pageTitles = {
   event: 'Event details',
   history: 'Events',
   'admin-records': 'Attendance records',
+  'roster-import': 'Upload section roster',
   scanner: 'Scan Attendance',
   receipt: 'Attendance recorded',
 };
 
 function HeaderBar({ screen, user, online, eventId, adminSession }) {
   const back = ['records', 'profile'].includes(screen) ? ['student-home']
-    : ['admin-records', 'history', 'event'].includes(screen) ? ['admin-home']
+    : ['admin-records', 'history', 'event', 'roster-import'].includes(screen) ? ['admin-home']
       : ['scanner', 'receipt'].includes(screen) ? ['event', { eventId }]
         : null;
   const serverSession = user?.role === 'admin' && adminSession?.id === user.id && Boolean(adminSession.token);
@@ -155,10 +157,10 @@ export default function AppScreen() {
     catch (e) { setError(e.message || 'Could not save. Please try again.'); }
     finally { lock.current = false; setBusy(false); }
   }
-  function openManagement() {
+  function openOrganizerPortal() {
     const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-    if (!apiUrl) { setNotice('Management website is not configured for this app build.'); return; }
-    Linking.openURL(`${apiUrl.replace(/\/$/, '')}/manager`).catch(() => setNotice('Could not open the management website.'));
+    if (!apiUrl) { setNotice('Organizer website is not configured for this app build.'); return; }
+    Linking.openURL(apiUrl.replace(/\/$/, '')).catch(() => setNotice('Could not open the organizer website.'));
   }
   async function refreshStudentAttendance(enteredPassword) {
     const password = Platform.OS === 'web'
@@ -214,6 +216,7 @@ export default function AppScreen() {
   if (!authScreen && !user) return focused ? <Redirect href="/" /> : null;
   if (user && mustChange && screen !== 'change-password') return focused ? <Redirect href="/change-password" /> : null;
   if (user && !mustChange && screen === 'change-password') return focused ? <Redirect href={`/${home}`} /> : null;
+  if (screen === 'roster-import' && Platform.OS !== 'web') return focused ? <Redirect href={`/${home}`} /> : null;
   if (user && (authScreen || (adminScreens.includes(screen) && user.role !== 'admin') || (studentScreens.includes(screen) && user.role !== 'student'))) {
     return focused ? <Redirect href={`/${home}`} /> : null;
   }
@@ -270,16 +273,18 @@ export default function AppScreen() {
   else if (screen === 'admin-home') content = <>
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
     <Metrics items={[["Present today", todayRecords.filter(r => r.status === 'PRESENT').length], ['Pending sync', pending]]} />
-    <Button icon={currentEvent ? 'scan-outline' : 'calendar-outline'} onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : openManagement()}>{currentEvent ? 'Start scanning' : 'Open event management'}</Button>
-    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>No event is assigned to this organizer yet. Open management to create and assign an event.</Muted></Card>}
+    <Button icon={currentEvent ? 'scan-outline' : 'calendar-outline'} onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : openOrganizerPortal()}>{currentEvent ? 'Start scanning' : 'Open organizer portal'}</Button>
+    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>No event is assigned yet. Open the organizer portal to create an event or check your assignments.</Muted></Card>}
     <RecentActivity records={data.records.slice(0, 4)} onSeeAll={() => go('admin-records')} />
     <Card><Title>Organizer tools</Title>
       <Button secondary onPress={() => go('history')}>View assigned events</Button>
-      <Button secondary onPress={openManagement}>Open management website</Button>
+      {Platform.OS === 'web' && <Button secondary onPress={() => go('roster-import')}>Upload section roster</Button>}
+      <Button secondary onPress={openOrganizerPortal}>Open organizer portal</Button>
     </Card>
-    <Card><Title>Sync attendance</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting. Rosters and events are managed on the website.</Muted>
+    <Card><Title>Sync attendance</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting. Event setup remains available in the organizer portal.</Muted>
       <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
   </>;
+  else if (screen === 'roster-import') content = <RosterImport />;
   else if (screen === 'admin-records') content = <>
     <Button secondary disabled={busy || !online || (Platform.OS !== 'web' && adminSession?.id !== user.id)} onPress={() => requestAttendanceRefresh('admin')}>
       {busy ? 'Refreshing...' : !online ? 'Connect to refresh attendance' : Platform.OS !== 'web' && adminSession?.id !== user.id ? 'Sign in online to refresh' : 'Refresh from server'}
