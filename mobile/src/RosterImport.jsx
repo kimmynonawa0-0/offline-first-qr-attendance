@@ -3,17 +3,20 @@ import { Platform, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Card, colors, ErrorText, Muted, Row, styles, Title } from './ui';
+import { Button, Card, colors, ErrorText, Field, Muted, Row, styles, Title } from './ui';
 import { useApp } from './state';
 import { importRoster, MAX_ROSTER_BYTES, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import { uploadRosterToServer } from './remote-sync.mjs';
+import { reauthenticateOrganizer } from './web-auth.mjs';
+import { authorizeRosterUpload } from './roster-upload-session.mjs';
 
 export default function RosterImport() {
-  const { data, user, update, adminSession, adminAuthIssue } = useApp();
+  const { data, user, update, adminSession, setAdminSession, adminAuthIssue, online } = useApp();
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const summary = preview ? rosterSummary(data, preview.rows) : null;
@@ -43,6 +46,7 @@ export default function RosterImport() {
       <Title>Choose a faculty roster</Title>
       <Muted>CSV or Excel (.xlsx, .xls). Required: student_id, name, section. Email is optional.</Muted>
       <Muted>For Excel, put the roster on the first sheet and format student IDs as text.</Muted>
+      <Muted>This organizer can upload students only for {user.section || 'their assigned section'}.</Muted>
       <Button disabled={busy} onPress={choose}>Choose roster file</Button>
       <Muted>New students use their section as a temporary password. Existing accounts stay unchanged.</Muted>
     </>}
@@ -65,19 +69,37 @@ export default function RosterImport() {
         <Text style={styles.rosterStatus}>{existingIds.has(row.id) ? 'Existing' : 'New'}</Text>
       </View>)}
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
-      <Muted>Internet is required. The roster is uploaded to PostgreSQL before it is saved on this phone.</Muted>
-      {!adminSession || adminSession.id !== user.id ? <>
-        <ErrorText>Organizer access is only on this phone; the server has not verified this sign-in.</ErrorText>
+      <Muted>Upload requires internet. The server checks your organizer access and section before saving this roster.</Muted>
+      {online !== true && <ErrorText>Connect to the internet before uploading. Your selected file is only being previewed on this device.</ErrorText>}
+      {Platform.OS === 'web' && (adminSession?.id !== user.id || !adminSession?.token) && <>
+        <Muted>Your browser needs to verify your organizer account before it can upload.</Muted>
+        <Field label="Organizer password" password value={password} onChangeText={setPassword} />
+      </>}
+      {Platform.OS !== 'web' && (!adminSession || adminSession.id !== user.id) ? <>
+        <ErrorText>The server has not verified this organizer session on this device.</ErrorText>
         {adminAuthIssue ? <ErrorText>Server sign-in detail: {adminAuthIssue}</ErrorText> : null}
-        <Muted>Connect to the internet and sign in again. The roster cannot upload until the server verifies the organizer.</Muted>
+        <Muted>Connect to the internet and sign in again before uploading.</Muted>
       </> : null}
       <View style={styles.localPill}><Ionicons name="alert-circle-outline" size={18} color={colors.yellow} /><Text style={styles.localPillText}>Existing accounts and passwords stay unchanged.</Text></View>
-      <Button disabled={busy || adminSession?.id !== user.id} onPress={async () => {
+      <Button disabled={busy || online !== true || (Platform.OS !== 'web' && adminSession?.id !== user.id)
+        || (Platform.OS === 'web' && !(adminSession?.id === user.id && adminSession?.token) && !password)} onPress={async () => {
         if (lock.current) return;
         lock.current = true; setBusy(true); setError('');
         let uploadedToServer = false;
         try {
-          const remoteCounts = await uploadRosterToServer(preview.rows, user, adminSession?.id === user.id ? adminSession.token : null, process.env.EXPO_PUBLIC_API_URL);
+          const authorization = await authorizeRosterUpload({
+            user,
+            session: adminSession?.id === user.id ? adminSession : null,
+            password,
+            apiUrl: process.env.EXPO_PUBLIC_API_URL,
+            online: online === true,
+            isWeb: Platform.OS === 'web',
+            reauthenticate: reauthenticateOrganizer,
+          });
+          if (Platform.OS === 'web' && authorization !== adminSession) {
+            await setAdminSession(authorization);
+          }
+          const remoteCounts = await uploadRosterToServer(preview.rows, user, authorization.token, process.env.EXPO_PUBLIC_API_URL);
           uploadedToServer = true;
           let localCounts;
           await update(current => {
@@ -85,15 +107,17 @@ export default function RosterImport() {
             return importRoster(current, user, preview.rows);
           });
           setResult(`Roster uploaded. ${remoteCounts.added} new students added; ${remoteCounts.skipped} existing IDs kept. This device saved ${localCounts.added} local account(s).`);
+          setPassword('');
           setPreview(null);
         } catch (e) {
+          if (Platform.OS === 'web' && e.status === 401) await setAdminSession(null);
           setError(uploadedToServer
-            ? 'The server roster was uploaded, but this phone could not save its local copy. Retry the import; existing server accounts will be kept.'
-            : e.message || 'Roster upload failed. This phone did not import the roster.');
+            ? 'The server roster was uploaded, but this device could not save its local copy. Retry the import; existing server accounts will be kept.'
+            : e.message || 'Could not confirm the server upload. Retry while online; existing server accounts will be kept.');
         }
         finally { lock.current = false; setBusy(false); }
-      }}>{busy ? 'Uploading roster...' : 'Upload and import roster'}</Button>
-      <Button secondary disabled={busy} onPress={() => { setPreview(null); }}>Cancel import</Button>
+      }}>{busy ? 'Uploading roster...' : 'Upload roster to server'}</Button>
+      <Button secondary disabled={busy} onPress={() => { setPreview(null); setPassword(''); }}>Cancel import</Button>
     </>}
     <ErrorText>{error}</ErrorText>
     {!!result && <Text accessibilityRole="alert" style={{ color: colors.yellow, fontWeight: '700' }}>{result}</Text>}
