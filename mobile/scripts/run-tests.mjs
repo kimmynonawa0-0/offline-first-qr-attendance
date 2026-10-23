@@ -5,6 +5,7 @@ const testFiles = [
   '../src/offline-auth.test.mjs',
   '../src/web-session.test.mjs',
   '../src/web-auth.test.mjs',
+  '../src/roster-upload-session.test.mjs',
   '../src/web-local-data.test.mjs',
   '../src/web-api-url.test.mjs',
 ];
