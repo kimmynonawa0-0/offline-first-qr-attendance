@@ -21,6 +21,9 @@ export default function RosterImport() {
   const lock = useRef(false);
   const summary = preview ? rosterSummary(data, preview.rows) : null;
   const existingIds = new Set([...data.students, ...data.admins].map(account => account.id));
+  const sectionRoster = data.students
+    .filter(student => student.section === user.section)
+    .sort((left, right) => left.id.localeCompare(right.id));
   async function choose() {
     setError(''); setResult(''); setPreview(null);
     try {
@@ -42,6 +45,11 @@ export default function RosterImport() {
     }
   }
   return <Card>
+    <Title>Current section roster</Title>
+    <Muted>{sectionRoster.length} student{sectionRoster.length === 1 ? '' : 's'} available on this device from {user.section || 'your assigned section'}.</Muted>
+    {sectionRoster.length ? sectionRoster.map(student => <View key={student.id} style={styles.rosterRow}>
+      <Text style={styles.rosterId}>{student.id}</Text><Text numberOfLines={2} style={styles.rosterName}>{student.name}</Text>
+    </View>) : <Muted>No section roster is saved yet. Upload a roster or sign in online to download it.</Muted>}
     {!preview && <>
       <Title>Choose a faculty roster</Title>
       <Muted>CSV or Excel (.xlsx, .xls). Required: student_id, name, section. Email is optional.</Muted>
