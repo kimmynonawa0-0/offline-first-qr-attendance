@@ -1,10 +1,12 @@
 const testFiles = [
   '../src/model.test.mjs',
+  '../src/today-event.test.mjs',
   '../src/sqlite-storage.test.mjs',
   '../src/remote-sync.test.mjs',
   '../src/offline-auth.test.mjs',
   '../src/web-session.test.mjs',
   '../src/web-auth.test.mjs',
+  '../src/attendance-refresh.test.mjs',
   '../src/roster-upload-session.test.mjs',
   '../src/web-local-data.test.mjs',
   '../src/web-api-url.test.mjs',
