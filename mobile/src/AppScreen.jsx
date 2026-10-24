@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
+import { eventForToday } from './today-event.mjs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
@@ -14,6 +15,7 @@ import Scanner from './Scanner';
 import { checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
 import { downloadOrganizerAttendance, downloadStudentAttendance, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
+import { hasOrganizerSession, organizerRefreshNeedsPassword } from './attendance-refresh.mjs';
 import { reauthenticateOrganizer } from './web-auth.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
@@ -157,11 +159,6 @@ export default function AppScreen() {
     catch (e) { setError(e.message || 'Could not save. Please try again.'); }
     finally { lock.current = false; setBusy(false); }
   }
-  function openOrganizerPortal() {
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-    if (!apiUrl) { setNotice('Organizer website is not configured for this app build.'); return; }
-    Linking.openURL(apiUrl.replace(/\/$/, '')).catch(() => setNotice('Could not open the organizer website.'));
-  }
   async function refreshStudentAttendance(enteredPassword) {
     const password = Platform.OS === 'web'
       ? enteredPassword
@@ -172,10 +169,8 @@ export default function AppScreen() {
     return records.length;
   }
   async function refreshOrganizerAttendance(enteredPassword) {
-    let token = Platform.OS === 'web'
-      ? null
-      : adminSession?.id === user?.id ? adminSession.token : null;
-    if (Platform.OS === 'web') {
+    let token = hasOrganizerSession(user, adminSession) ? adminSession.token : null;
+    if (Platform.OS === 'web' && !token) {
       const session = await reauthenticateOrganizer(user, enteredPassword, process.env.EXPO_PUBLIC_API_URL);
       token = session.sessionToken;
       await setAdminSession({ id: user.id, token });
@@ -185,7 +180,10 @@ export default function AppScreen() {
     return records.length;
   }
   function requestAttendanceRefresh(role) {
-    if (Platform.OS === 'web') {
+    const organizerNeedsPassword = role === 'admin'
+      && organizerRefreshNeedsPassword(Platform.OS, user, adminSession);
+    const studentNeedsPassword = role === 'student' && Platform.OS === 'web';
+    if (organizerNeedsPassword || studentNeedsPassword) {
       setError('');
       setRefreshPassword('');
       setRefreshPasswordPrompt(role);
@@ -223,8 +221,7 @@ export default function AppScreen() {
   const assignedEvents = user?.role === 'admin' ? data.events.filter(item => item.assignedToOrganizer) : data.events;
   const event = assignedEvents.find(e => e.id === eventId);
   const personalRecords = user ? data.records.filter(r => r.studentId === user.id) : [];
-  const todayEvents = assignedEvents.filter(e => e.date === localDate());
-  const currentEvent = todayEvents[0] || assignedEvents.at(-1);
+  const currentEvent = eventForToday(assignedEvents);
   const todayRecords = data.records.filter(r => r.date === localDate());
   const pending = data.records.filter(r => !r.synced).length;
   const ownAttendance = event?.attendees.find(a => a.id === user?.id);
@@ -273,15 +270,14 @@ export default function AppScreen() {
   else if (screen === 'admin-home') content = <>
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
     <Metrics items={[["Present today", todayRecords.filter(r => r.status === 'PRESENT').length], ['Pending sync', pending]]} />
-    <Button icon={currentEvent ? 'scan-outline' : 'calendar-outline'} onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : openOrganizerPortal()}>{currentEvent ? 'Start scanning' : 'Open organizer portal'}</Button>
-    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>No event is assigned yet. Open the organizer portal to create an event or check your assignments.</Muted></Card>}
+    <Button icon="scan-outline" onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : setNotice("There's no event for today.")}>Start scanning</Button>
+    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>There's no event for today.</Muted></Card>}
     <RecentActivity records={data.records.slice(0, 4)} onSeeAll={() => go('admin-records')} />
     <Card><Title>Organizer tools</Title>
       <Button secondary onPress={() => go('history')}>View assigned events</Button>
       {Platform.OS === 'web' && <Button secondary onPress={() => go('roster-import')}>Upload section roster</Button>}
-      <Button secondary onPress={openOrganizerPortal}>Open organizer portal</Button>
     </Card>
-    <Card><Title>Sync attendance</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting. Event setup remains available in the organizer portal.</Muted>
+    <Card><Title>Sync attendance</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting.</Muted>
       <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
   </>;
   else if (screen === 'roster-import') content = <RosterImport />;
