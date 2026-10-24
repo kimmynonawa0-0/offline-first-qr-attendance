@@ -14,8 +14,8 @@ export function parseWebOrigins(configuredOrigins = '') {
   return origins;
 }
 
-export function corsDecision(origin, allowedOrigins) {
-  if (!origin) return { allowed: true, headers: {} };
+export function corsDecision(origin, allowedOrigins, serviceOrigin) {
+  if (!origin || origin === serviceOrigin) return { allowed: true, headers: {} };
   if (!allowedOrigins.has(origin)) return { allowed: false, headers: {} };
 
   return {

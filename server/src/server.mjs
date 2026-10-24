@@ -116,7 +116,10 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     response.end(JSON.stringify(result));
   };
-  const cors = corsDecision(request.headers.origin, allowedWebOrigins);
+  const forwardedProtocol = request.headers['x-forwarded-proto']?.split(',')[0]?.trim();
+  const protocol = forwardedProtocol || (request.socket.encrypted ? 'https' : 'http');
+  const serviceOrigin = request.headers.host ? `${protocol}://${request.headers.host}` : '';
+  const cors = corsDecision(request.headers.origin, allowedWebOrigins, serviceOrigin);
   if (!cors.allowed) return send(403, { error: 'This web origin is not allowed to use the attendance API.' });
   for (const [name, value] of Object.entries(cors.headers)) response.setHeader(name, value);
   if (request.method === 'OPTIONS') {

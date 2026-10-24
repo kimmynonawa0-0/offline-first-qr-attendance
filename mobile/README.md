@@ -31,7 +31,8 @@ app.
 
 ## Faculty roster
 
-The manager website accepts **CSV UTF-8 (.csv)** and **Excel (.xlsx, .xls)**.
+The system-manager website accepts **CSV UTF-8 (.csv)** and **Excel (.xlsx, .xls)**.
+The organizer PWA accepts the same formats from its Upload section roster screen.
 Excel rosters must use the first worksheet and text-formatted Student IDs.
 
 ```csv
@@ -41,9 +42,12 @@ student_id,name,section,email
 ```
 
 Email is optional. `Student ID` and `Full Name` header spellings also work.
-The server validates and previews the file before import. Limits: 1 MB and
-5,000 students per file. Invalid rows, duplicate IDs, and missing required
-fields reject the entire import. Existing credentials are preserved.
+The manager website previews files before import. The organizer PWA previews
+the selected file locally, then sends it to the server only after online
+organizer authorization. Server-side validation limits files to 1 MB and
+5,000 students. An organizer can upload only students in their assigned section.
+Invalid rows, duplicate IDs, and missing required fields reject the whole import.
+Existing credentials are preserved.
 
 New accounts use the exact section text as their temporary password and must
 replace it with a different password of at least 12 characters. Dashboard,
@@ -57,6 +61,7 @@ for organizer access and email password recovery are deferred.
 
 - One student-ID login with automatic role selection, password visibility, and logout confirmation.
 - System manager website for roster import, organizer access, event assignment, and attendance review.
+- Organizer PWA roster import uploads online to the server and is restricted to the organizer's assigned section.
 - Mandatory first-login password change for both roles, persisted across app restarts.
 - Student dashboard, locally generated personal QR, enlarged QR, current event, and searchable personal attendance records.
 - Organizer dashboard focused on assigned events, scanning, local records, and later sync.
@@ -79,9 +84,10 @@ shell when offline. It does not cache API responses or replace the native APK.
 The PWA remembers the active user's ID and role in IndexedDB so the same account
 opens after a browser restart. Explicit logout clears that marker. Browser
 passwords are removed from IndexedDB during migration and are kept only in memory
-while the signed-in page is open. The PWA asks for the current password whenever
-it needs to refresh server attendance or upload organizer scans; it does not
-persist organizer bearer tokens. Locally saved events, rosters, and pending
+while the signed-in page is open. The PWA asks for the current password when it
+needs a new organizer session after a browser restart; it does not persist
+organizer bearer tokens. Roster uploads and attendance sync require internet.
+Locally saved events, rosters, and pending
 attendance remain available offline. Starting a new session after logout requires
 an online sign-in.
 
@@ -125,6 +131,10 @@ root, such as `https://norwescan-api.onrender.com`; do not append `/health` or
 `/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Render
 assigns to the static site, then redeploy the API. The release build fails early
 if the API URL is missing, not HTTPS, or contains a route path.
+The static PWA URL is distinct from the API-hosted organizer portal (`/`) and
+system-manager portal (`/manager`). Share the static PWA URL with students and
+organizers. The manager portal still relies on role-based API authorization;
+keeping its URL private is not a substitute for those checks.
 
 The service worker caches only the exported app shell, not API responses.
 Camera access and PWA installation require a secure context such as HTTPS (or
@@ -183,7 +193,7 @@ any images. Shared control colors are in `src/ui.jsx`.
 | `src/app/` | Expo Router entry and screen routes |
 | `src/AppScreen.jsx` | Dashboards, events, records, receipts, and navigation |
 | `src/Auth.jsx` | Unified login, account help, required password change |
-| `src/RosterImport.jsx` | Legacy mobile import component; not used by the current app flow |
+| `src/RosterImport.jsx` | Organizer PWA roster file preview and server upload |
 | `src/spreadsheet.mjs` | Excel workbook reader |
 | `src/roster.mjs` | Shared roster validation and student-only account creation |
 | `src/Scanner.jsx` | Camera permission, QR scanning, and roster confirmation |

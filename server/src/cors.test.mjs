@@ -35,6 +35,15 @@ test('requests without browser Origin headers remain usable by native clients', 
   assert.deepEqual(corsDecision(undefined, parseWebOrigins()), { allowed: true, headers: {} });
 });
 
+test('same-origin manager requests do not need to be added to the cross-origin allowlist', () => {
+  const apiOrigin = 'https://norwescan-api.onrender.com';
+
+  assert.deepEqual(corsDecision(apiOrigin, parseWebOrigins('https://offline-first-qr-attendance.onrender.com'), apiOrigin), {
+    allowed: true,
+    headers: {},
+  });
+});
+
 test('invalid or path-based origins fail configuration instead of widening access', () => {
   assert.throws(() => parseWebOrigins('not a URL'), /Invalid WEB_ORIGINS/);
   assert.throws(() => parseWebOrigins('https://example.com/path'), /exact HTTP\(S\) origins/);
