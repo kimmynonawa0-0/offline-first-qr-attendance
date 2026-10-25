@@ -15,19 +15,6 @@ test('roster upload reuses a matching server session', async () => {
   assert.equal(result, session);
 });
 
-test('PWA roster upload obtains a fresh organizer session when restored without a token', async () => {
-  const result = await authorizeRosterUpload({
-    user: organizer, session: null, password: 'secret', apiUrl: 'https://api.test', online: true, isWeb: true,
-    reauthenticate: async (user, password, apiUrl) => {
-      assert.equal(user, organizer);
-      assert.equal(password, 'secret');
-      assert.equal(apiUrl, 'https://api.test');
-      return { sessionToken: 'fresh-server-session' };
-    },
-  });
-  assert.deepEqual(result, { id: organizer.id, token: 'fresh-server-session' });
-});
-
-test('native roster upload without its server session does not request a password fallback', async () => {
-  await assert.rejects(authorizeRosterUpload({ user: organizer, online: true, isWeb: false }), /Sign in online/);
+test('roster upload never asks for a second password when the server session is missing', async () => {
+  await assert.rejects(authorizeRosterUpload({ user: organizer, online: true, session: null }), /session is unavailable.*Log out.*sign in online again/);
 });

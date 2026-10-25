@@ -5,10 +5,14 @@ import NetInfo from '@react-native-community/netinfo';
 import { createLocalRepository } from './local-repository';
 import { ACTIVE_USER_KEY, persistActiveUser, restoreRememberedUser } from './offline-auth.mjs';
 import { createIndexedDbStorage } from './indexeddb-storage.mjs';
-import { persistWebSession, restoreWebSession } from './web-session.mjs';
+import { persistWebOrganizerSession, persistWebSession, restoreWebOrganizerSession, restoreWebSession } from './web-session.mjs';
 
 const Context = createContext(null);
 export const useApp = () => useContext(Context);
+
+function parseSavedJson(value) {
+  try { return value ? JSON.parse(value) : null; } catch { return null; }
+}
 
 export function AppProvider({ children }) {
   const [repository] = useState(createLocalRepository);
@@ -24,13 +28,13 @@ export function AppProvider({ children }) {
   const [online, setOnline] = useState(null);
   const [loading, setLoading] = useState(true);
   function applyLoadedData(next, savedSession, savedUser) {
-    let session = null;
-    let marker = null;
-    try { session = savedSession ? JSON.parse(savedSession) : null; } catch {}
-    try { marker = savedUser ? JSON.parse(savedUser) : null; } catch {}
+    const marker = parseSavedJson(savedUser);
     const restored = Platform.OS === 'web'
       ? restoreWebSession(next, savedUser)
       : restoreRememberedUser(next, marker);
+    const session = Platform.OS === 'web'
+      ? restoreWebOrganizerSession(savedSession, restored)
+      : parseSavedJson(savedSession);
     setData(next);
     setAdminSessionState(session);
     setUserState(restored);
@@ -41,7 +45,7 @@ export function AppProvider({ children }) {
     setError('');
     try {
       const [next, savedSession, savedUser] = await Promise.all([
-        repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session'),
+        repository.load(), Platform.OS === 'web' ? browserSessionStorage.getItem('norwescan-admin-session') : SecureStore.getItemAsync('norwescan-admin-session'),
         Platform.OS === 'web' ? browserSessionStorage.getItem(ACTIVE_USER_KEY) : SecureStore.getItemAsync(ACTIVE_USER_KEY),
       ]);
       applyLoadedData(next, savedSession, savedUser);
@@ -51,8 +55,8 @@ export function AppProvider({ children }) {
   }
   useEffect(() => {
     let active = true;
-    Promise.all([repository.load(), Platform.OS === 'web' ? null : SecureStore.getItemAsync('norwescan-admin-session'),
-      Platform.OS === 'web' ? null : SecureStore.getItemAsync(ACTIVE_USER_KEY)]).then(([next, savedSession, savedUser]) => {
+    Promise.all([repository.load(), Platform.OS === 'web' ? browserSessionStorage.getItem('norwescan-admin-session') : SecureStore.getItemAsync('norwescan-admin-session'),
+      Platform.OS === 'web' ? browserSessionStorage.getItem(ACTIVE_USER_KEY) : SecureStore.getItemAsync(ACTIVE_USER_KEY)]).then(([next, savedSession, savedUser]) => {
       if (active) { applyLoadedData(next, savedSession, savedUser); setLoading(false); }
     }).catch(() => {
       if (active) {
@@ -90,11 +94,14 @@ export function AppProvider({ children }) {
       : null);
   }
   async function setAdminSession(session) {
-    if (Platform.OS !== 'web') await SecureStore.setItemAsync('norwescan-admin-session', JSON.stringify(session));
+    if (Platform.OS === 'web') await persistWebOrganizerSession(browserSessionStorage, session);
+    else if (session) await SecureStore.setItemAsync('norwescan-admin-session', JSON.stringify(session));
+    else await SecureStore.deleteItemAsync('norwescan-admin-session');
     setAdminSessionState(session);
   }
   async function clearAdminSession() {
-    if (Platform.OS !== 'web') await SecureStore.deleteItemAsync('norwescan-admin-session');
+    if (Platform.OS === 'web') await persistWebOrganizerSession(browserSessionStorage, null);
+    else await SecureStore.deleteItemAsync('norwescan-admin-session');
     setAdminSessionState(null);
   }
   function consumeStartupRoute() { setStartupRoute(null); }

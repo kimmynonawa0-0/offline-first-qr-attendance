@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialData } from './model.mjs';
-import { persistWebSession, restoreWebSession } from './web-session.mjs';
+import { persistWebOrganizerSession, persistWebSession, restoreWebOrganizerSession, restoreWebSession, WEB_ORGANIZER_SESSION_KEY } from './web-session.mjs';
 
 function browserStorage() {
   const values = new Map();
@@ -42,4 +42,25 @@ test('web logout clears only the remembered session marker', async () => {
   await persistWebSession(storage, null);
 
   assert.equal(await storage.getItem('norwescan-active-user'), null);
+});
+
+test('web organizer session survives reload and is scoped to the remembered organizer', async () => {
+  const storage = browserStorage();
+  const user = { id: '23-02330', role: 'admin' };
+  await persistWebOrganizerSession(storage, { ...user, token: 'server-token' });
+
+  assert.deepEqual(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), user), {
+    id: user.id, token: 'server-token',
+  });
+  assert.equal(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), { id: 'other', role: 'admin' }), null);
+  assert.equal(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), { ...user, role: 'student' }), null);
+});
+
+test('web organizer logout clears the stored server token', async () => {
+  const storage = browserStorage();
+  await persistWebOrganizerSession(storage, { id: '23-02330', token: 'server-token' });
+
+  await persistWebOrganizerSession(storage, null);
+
+  assert.equal(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), null);
 });

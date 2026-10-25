@@ -3,20 +3,18 @@ import { Platform, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Card, colors, ErrorText, Field, Muted, Row, styles, Title } from './ui';
+import { Button, Card, colors, ErrorText, Muted, Row, styles, Title } from './ui';
 import { useApp } from './state';
 import { importRoster, MAX_ROSTER_BYTES, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import { uploadRosterToServer } from './remote-sync.mjs';
-import { reauthenticateOrganizer } from './web-auth.mjs';
 import { authorizeRosterUpload } from './roster-upload-session.mjs';
 
 export default function RosterImport() {
-  const { data, user, update, adminSession, setAdminSession, adminAuthIssue, online } = useApp();
+  const { data, user, update, adminSession, setAdminSession, online } = useApp();
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const summary = preview ? rosterSummary(data, preview.rows) : null;
@@ -79,18 +77,12 @@ export default function RosterImport() {
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
       <Muted>Upload requires internet. The server checks your organizer access and section before saving this roster.</Muted>
       {online !== true && <ErrorText>Connect to the internet before uploading. Your selected file is only being previewed on this device.</ErrorText>}
-      {Platform.OS === 'web' && (adminSession?.id !== user.id || !adminSession?.token) && <>
-        <Muted>Your browser needs to verify your organizer account before it can upload.</Muted>
-        <Field label="Organizer password" password value={password} onChangeText={setPassword} />
-      </>}
-      {Platform.OS !== 'web' && (!adminSession || adminSession.id !== user.id) ? <>
+      {(!adminSession || adminSession.id !== user.id || !adminSession.token) ? <>
         <ErrorText>The server has not verified this organizer session on this device.</ErrorText>
-        {adminAuthIssue ? <ErrorText>Server sign-in detail: {adminAuthIssue}</ErrorText> : null}
-        <Muted>Connect to the internet and sign in again before uploading.</Muted>
+        <Muted>Log out, then sign in online again. Your selected file stays on this device.</Muted>
       </> : null}
       <View style={styles.localPill}><Ionicons name="alert-circle-outline" size={18} color={colors.yellow} /><Text style={styles.localPillText}>Existing accounts and passwords stay unchanged.</Text></View>
-      <Button disabled={busy || online !== true || (Platform.OS !== 'web' && adminSession?.id !== user.id)
-        || (Platform.OS === 'web' && !(adminSession?.id === user.id && adminSession?.token) && !password)} onPress={async () => {
+      <Button disabled={busy || online !== true || adminSession?.id !== user.id || !adminSession?.token} onPress={async () => {
         if (lock.current) return;
         lock.current = true; setBusy(true); setError('');
         let uploadedToServer = false;
@@ -98,15 +90,8 @@ export default function RosterImport() {
           const authorization = await authorizeRosterUpload({
             user,
             session: adminSession?.id === user.id ? adminSession : null,
-            password,
-            apiUrl: process.env.EXPO_PUBLIC_API_URL,
             online: online === true,
-            isWeb: Platform.OS === 'web',
-            reauthenticate: reauthenticateOrganizer,
           });
-          if (Platform.OS === 'web' && authorization !== adminSession) {
-            await setAdminSession(authorization);
-          }
           const remoteCounts = await uploadRosterToServer(preview.rows, user, authorization.token, process.env.EXPO_PUBLIC_API_URL);
           uploadedToServer = true;
           let localCounts;
@@ -115,7 +100,6 @@ export default function RosterImport() {
             return importRoster(current, user, preview.rows);
           });
           setResult(`Roster uploaded. ${remoteCounts.added} new students added; ${remoteCounts.skipped} existing IDs kept. This device saved ${localCounts.added} local account(s).`);
-          setPassword('');
           setPreview(null);
         } catch (e) {
           if (Platform.OS === 'web' && e.status === 401) await setAdminSession(null);
@@ -125,7 +109,7 @@ export default function RosterImport() {
         }
         finally { lock.current = false; setBusy(false); }
       }}>{busy ? 'Uploading roster...' : 'Upload roster to server'}</Button>
-      <Button secondary disabled={busy} onPress={() => { setPreview(null); setPassword(''); }}>Cancel import</Button>
+      <Button secondary disabled={busy} onPress={() => setPreview(null)}>Cancel import</Button>
     </>}
     <ErrorText>{error}</ErrorText>
     {!!result && <Text accessibilityRole="alert" style={{ color: colors.yellow, fontWeight: '700' }}>{result}</Text>}
