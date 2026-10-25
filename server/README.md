@@ -1,7 +1,7 @@
 # NORWEScan sync API
 
-The Render Node service serves the event-organizer portal at `/`, the system
-manager portal at `/manager`, and the API.
+The Render Node service serves the system-manager console at `/manager` and the
+attendance API. It does not serve a separate organizer website.
 Neon PostgreSQL is the shared source for rosters, organizer access, events, and
 synced attendance. Organizer phones keep a local SQLite roster and assigned event
 copies so attendance can still be scanned offline.
@@ -35,14 +35,15 @@ must differ, the passwords must differ, and both passwords must be at least 12 c
 all four variables before deploying. Open
 `https://YOUR-RENDER-SERVICE.onrender.com/manager` and sign in with the manager
 ID/password; its first login requires a private password change. System managers
-can import CSV/Excel rosters, grant or revoke organizer access, create events,
-assign organizers, review all attendance, and inspect the audit log. Event
-organizers sign in at the service root. They have an overview without the
-administrator activity feed, can view/import their own section roster, create
-events and assign them to active organizers, view events assigned to them, and
-review check-ins for those events. Only the system manager can grant/revoke
-organizer access or see the global administrator activity feed. Both portals
-provide an animated show/hide password control.
+can import CSV/Excel rosters, manage student profiles, reset student passwords,
+grant or revoke organizer access, create events, assign organizers, review all
+attendance, and inspect the audit log. The student directory groups sections by
+program and year. New students and password resets use the section as a temporary
+password and require a password change. Deleting a student revokes their organizer
+access but preserves historical attendance. Event organizers use the PWA/mobile
+app to view and import their own section roster, scan assigned events, and review
+check-ins; they cannot use the system-manager console. Manager APIs enforce this
+role boundary even if an organizer opens `/manager` directly.
 
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
@@ -62,8 +63,8 @@ still enforce account and organizer-session authorization.
 
 To make a student an organizer, import that student first, then grant organizer
 access by student ID. Their existing password remains the same. The organizer
-can sign in to the root portal or the app with the same credentials. Online app
-login downloads the assigned
+signs in to the PWA or mobile app with the same credentials. Online app login
+downloads the assigned
 events and student roster into local SQLite. The app saves each scan locally;
 Sync sends only pending records and the server checks event assignment and
 student membership before accepting them. A revoked organizer cannot sign in or

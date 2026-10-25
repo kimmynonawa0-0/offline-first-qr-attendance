@@ -11,15 +11,15 @@ test('organizer sessions use unpredictable bearer tokens stored only as hashes',
   assert.equal(hashSessionToken(first), hashSessionToken(first));
 });
 
-test('web login clients only receive sessions for their own account roles', () => {
-  assert.equal(loginClientRoleError('organizer-web', 'organizer'), null);
+test('system managers alone can sign in to the management website', () => {
+  assert.match(loginClientRoleError('organizer-web', 'organizer'), /website is unavailable/);
   assert.equal(loginClientRoleError('manager-web', 'manager'), null);
-  assert.match(loginClientRoleError('organizer-web', 'manager'), /\/manager/);
+  assert.match(loginClientRoleError('organizer-web', 'manager'), /website is unavailable/);
   assert.match(loginClientRoleError('manager-web', 'organizer'), /system-manager/);
   assert.match(loginClientRoleError('mobile', 'manager'), /scanning app/);
 });
 
-test('organizer portal access is scoped to its section and available after password setup', () => {
+test('organizer app uploads are scoped to its section and available after password setup', () => {
   const organizer = { access_level:'organizer', section:'BSCS-3C', must_change_password:false };
   assert.equal(canImportRoster(organizer), true);
   assert.equal(canCreateOrganizerEvent(organizer), true);

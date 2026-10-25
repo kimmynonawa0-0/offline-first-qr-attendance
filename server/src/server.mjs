@@ -5,6 +5,7 @@ import pg from 'pg';
 import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, validateBatch } from './sync.mjs';
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
+import { validateManagedStudent } from './management-students.mjs';
 import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, rosterScopeError } from './auth.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
 
@@ -133,10 +134,9 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   const pagePath = request.url.split('?')[0];
-  if (request.method === 'GET' && ['/','/manager'].includes(pagePath)) {
+  if (request.method === 'GET' && pagePath === '/manager') {
     try {
-      const fileName = pagePath === '/manager' ? 'manager.html' : 'organizer.html';
-      const page = await readFile(new URL(`../public/${fileName}`, import.meta.url));
+      const page = await readFile(new URL('../public/manager.html', import.meta.url));
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       response.end(page);
     } catch (error) {
@@ -358,7 +358,7 @@ const server = http.createServer(async (request, response) => {
       if (!manager) return send(401, { error: 'Sign in to the management website.' });
       if (!isManager(manager)) return send(403, { error: 'Only a system manager can use management tools.' });
       const [students, organizers, events, attendance, audit] = await Promise.all([
-        pool.query('SELECT id, name, section FROM students ORDER BY section, name'),
+        pool.query('SELECT id, name, section, email, must_change_password FROM students ORDER BY section, name'),
         pool.query(`SELECT o.id, o.name, o.enabled, o.access_level,
           (SELECT COUNT(*)::int FROM event_organizers eo WHERE eo.organizer_id = o.id) AS assigned_events
           FROM organizers o ORDER BY o.name, o.id`),
@@ -375,6 +375,133 @@ const server = http.createServer(async (request, response) => {
       ]);
       return send(200, { students: students.rows, organizers: organizers.rows, events: events.rows,
         attendanceCount: attendance.rows[0].count, audit: audit.rows });
+    }
+    if (request.method === 'POST' && request.url === '/management/students') {
+      const manager = await organizerForRequest(request);
+      if (!manager) return send(401, { error: 'Sign in to the management website.' });
+      if (!isManager(manager)) return send(403, { error: 'Only a system manager can manage student accounts.' });
+      let student;
+      try { student = validateManagedStudent(body); }
+      catch (error) { return send(400, { error: error.message }); }
+      if (student.id === MANAGER_ID) return send(400, { error: 'The system manager ID cannot be used for a student account.' });
+      const salt = randomBytes(16).toString('hex');
+      const hash = await passwordHashAsync(student.section, salt);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const existingOrganizer = await client.query('SELECT id FROM organizers WHERE id = $1', [student.id]);
+        if (existingOrganizer.rowCount) {
+          await client.query('ROLLBACK');
+          return send(409, { error: 'This ID already has organizer access. Edit the existing student record instead.' });
+        }
+        await client.query(`INSERT INTO students (id, name, section, email, password_salt, password_hash, must_change_password)
+          VALUES ($1, $2, $3, $4, $5, $6, TRUE)`, [student.id, student.name, student.section, student.email, salt, hash]);
+        await writeAudit(client, manager.id, 'student_created', student.id, { section: student.section });
+        await client.query('COMMIT');
+        return send(201, { student: { ...student, must_change_password: true } });
+      } catch (error) {
+        await client.query('ROLLBACK');
+        if (error.code === '23505') return send(409, { error: 'A student with this ID already exists.' });
+        throw error;
+      } finally { client.release(); }
+    }
+    if (request.method === 'PATCH' && request.url.startsWith('/management/students/')) {
+      const manager = await organizerForRequest(request);
+      if (!manager) return send(401, { error: 'Sign in to the management website.' });
+      if (!isManager(manager)) return send(403, { error: 'Only a system manager can manage student accounts.' });
+      const encodedId = request.url.slice('/management/students/'.length);
+      if (!encodedId || encodedId.includes('/')) return send(404, { error: 'Student account was not found.' });
+      const studentId = decodeURIComponent(encodedId);
+      let student;
+      try { student = validateManagedStudent({ ...body, id: studentId }); }
+      catch (error) { return send(400, { error: error.message }); }
+      if (student.id === MANAGER_ID) return send(400, { error: 'The system manager ID cannot be edited as a student.' });
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const previous = await client.query('SELECT section, email, name, must_change_password FROM students WHERE id = $1 FOR UPDATE', [studentId]);
+        if (!previous.rows[0]) {
+          await client.query('ROLLBACK');
+          return send(404, { error: 'Student account was not found.' });
+        }
+        const sectionChanged = previous.rows[0].section !== student.section;
+        let tempCredential = null;
+        if (sectionChanged && previous.rows[0].must_change_password) {
+          const salt = randomBytes(16).toString('hex');
+          tempCredential = { salt, hash: await passwordHashAsync(student.section, salt) };
+          await client.query(`UPDATE students SET name = $2, section = $3, email = $4, password_salt = $5, password_hash = $6
+            WHERE id = $1`, [studentId, student.name, student.section, student.email, salt, tempCredential.hash]);
+          await client.query(`UPDATE organizers SET name = $2, section = $3, salt = $4, password_hash = $5,
+            credential_initialized = TRUE, must_change_password = TRUE WHERE id = $1 AND access_level = 'organizer'`,
+          [studentId, student.name, student.section, salt, tempCredential.hash]);
+        } else {
+          await client.query('UPDATE students SET name = $2, section = $3, email = $4 WHERE id = $1',
+            [studentId, student.name, student.section, student.email]);
+          await client.query("UPDATE organizers SET name = $2, section = $3 WHERE id = $1 AND access_level = 'organizer'",
+            [studentId, student.name, student.section]);
+        }
+        if (sectionChanged) await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [studentId]);
+        await writeAudit(client, manager.id, 'student_updated', studentId, {
+          sectionChanged, emailChanged: previous.rows[0].email !== student.email,
+          nameChanged: previous.rows[0].name !== student.name,
+        });
+        await client.query('COMMIT');
+        return send(200, { student: { ...student, must_change_password: Boolean(tempCredential || previous.rows[0].must_change_password) } });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    }
+    if (request.method === 'POST' && request.url.startsWith('/management/students/') && request.url.endsWith('/password-reset')) {
+      const manager = await organizerForRequest(request);
+      if (!manager) return send(401, { error: 'Sign in to the management website.' });
+      if (!isManager(manager)) return send(403, { error: 'Only a system manager can reset student passwords.' });
+      const encodedId = request.url.slice('/management/students/'.length, -'/password-reset'.length);
+      if (!encodedId || encodedId.includes('/')) return send(404, { error: 'Student account was not found.' });
+      const studentId = decodeURIComponent(encodedId);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query('SELECT section FROM students WHERE id = $1 FOR UPDATE', [studentId]);
+        if (!result.rows[0]) {
+          await client.query('ROLLBACK');
+          return send(404, { error: 'Student account was not found.' });
+        }
+        const salt = randomBytes(16).toString('hex');
+        const hash = await passwordHashAsync(result.rows[0].section, salt);
+        await client.query(`UPDATE students SET password_salt = $2, password_hash = $3, must_change_password = TRUE WHERE id = $1`,
+          [studentId, salt, hash]);
+        await client.query(`UPDATE organizers SET salt = $2, password_hash = $3, credential_initialized = TRUE,
+          must_change_password = TRUE WHERE id = $1 AND access_level = 'organizer'`, [studentId, salt, hash]);
+        await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [studentId]);
+        await writeAudit(client, manager.id, 'student_password_reset', studentId, {});
+        await client.query('COMMIT');
+        return send(200, { ok: true, mustChangePassword: true });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    }
+    if (request.method === 'DELETE' && request.url.startsWith('/management/students/')) {
+      const manager = await organizerForRequest(request);
+      if (!manager) return send(401, { error: 'Sign in to the management website.' });
+      if (!isManager(manager)) return send(403, { error: 'Only a system manager can delete student accounts.' });
+      const encodedId = request.url.slice('/management/students/'.length);
+      if (!encodedId || encodedId.includes('/')) return send(404, { error: 'Student account was not found.' });
+      const studentId = decodeURIComponent(encodedId);
+      if (studentId === MANAGER_ID) return send(400, { error: 'The system manager account cannot be deleted as a student.' });
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query('SELECT name, section FROM students WHERE id = $1 FOR UPDATE', [studentId]);
+        if (!result.rows[0]) {
+          await client.query('ROLLBACK');
+          return send(404, { error: 'Student account was not found.' });
+        }
+        await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [studentId]);
+        await client.query("DELETE FROM organizers WHERE id = $1 AND access_level = 'organizer'", [studentId]);
+        await client.query('DELETE FROM students WHERE id = $1', [studentId]);
+        await writeAudit(client, manager.id, 'student_deleted', studentId, { section: result.rows[0].section });
+        await client.query('COMMIT');
+        return send(200, { ok: true, attendanceHistoryPreserved: true });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
     }
     if (request.method === 'POST' && request.url === '/management/organizers') {
       const manager = await organizerForRequest(request);

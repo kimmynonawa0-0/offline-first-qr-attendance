@@ -11,6 +11,7 @@
     button,input,select{font:inherit}button{border:0;border-radius:10px;padding:12px 16px;background:var(--yellow);color:#15160e;font-weight:800;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.secondary{background:#2d3929;color:var(--ink);border:1px solid #536349}.danger{background:#512c27;color:#ffe7df;border:1px solid #87483e}
     .shell{max-width:1120px;margin:auto;padding:24px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:8px 0 20px}.brand{font-weight:950;letter-spacing:.08em}.brand span{color:var(--yellow)}.tag{color:var(--muted);font-size:.85rem}
     .panel{background:linear-gradient(145deg,#1b2119,#151914);border:1px solid var(--line);border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 18px 50px #0003}.login{max-width:440px;margin:12vh auto}.hidden{display:none!important}h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.6rem,4vw,2.35rem);line-height:1.12}h2{font-size:1.2rem}p,.muted{color:var(--muted)}label{display:block;color:var(--muted);font-size:.9rem;margin:12px 0 5px}input,select{width:100%;padding:12px;background:#10140f;color:var(--ink);border:1px solid #46503f;border-radius:9px}input[type=file]{padding:9px}.password-field{position:relative}.password-field input{padding-right:52px}.password-toggle{position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:8px;background:transparent;color:var(--muted);border:0;transition:color .2s,transform .18s}.password-toggle:hover{color:var(--yellow)}.password-toggle:active{transform:translateY(-50%) scale(.9)}.password-toggle:focus-visible{outline:2px solid var(--yellow);outline-offset:1px}.password-toggle svg{display:block;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;overflow:visible}.password-toggle svg.eye-change{animation:eye-change .24s ease-out}@keyframes eye-change{0%{opacity:.35;transform:scale(.72) rotate(-8deg)}65%{opacity:1;transform:scale(1.12) rotate(3deg)}100%{transform:scale(1) rotate(0)}}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:14px}.metric{font-size:1.8rem;font-weight:900;color:var(--yellow)}.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:18px 0}.tabs{display:flex;overflow:auto;gap:8px;margin:18px 0}.tabs button{white-space:nowrap}.tabs .secondary{background:transparent}.status{min-height:1.5em;color:var(--yellow);margin:10px 0}.error{color:var(--red)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:640px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 9px;font-size:.8rem}.pill.on{border-color:#63844a;color:#bde095}.pill.off{border-color:#87534b;color:#ffb6a7}.picklist{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px}.check{display:flex;align-items:center;gap:9px;padding:6px 3px;color:var(--ink)}.check input{width:auto}
+    .section-group{border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:12px}.section-group summary{cursor:pointer;color:var(--yellow);font-weight:800;padding:6px}.section-group summary .muted{float:right;font-weight:400}
     @media(max-width:600px){.shell{padding:14px}.panel{padding:16px}.top{align-items:flex-start}.top .tag{max-width:130px;text-align:right}}
   </style>
 </head>
@@ -19,12 +20,12 @@
     <header class="top"><div><div class="brand">NORWE<span>Scan</span></div><div class="tag">CCIS attendance management</div></div><div id="account-tag" class="tag"></div></header>
     <section id="login-panel" class="panel login">
       <p class="tag">SYSTEM MANAGER ACCESS</p><h1>Manage attendance from one place.</h1>
-      <p>Sign in with your assigned student ID and password. Your server role controls the available tools.</p>
+      <p>Only the system-manager account can sign in here. Organizer credentials are not accepted.</p>
       <form id="login-form"><label for="login-id">Student ID</label><input id="login-id" autocomplete="username" required>
         <label for="login-password">Password</label><div class="password-field"><input id="login-password" type="password" autocomplete="current-password" required><button class="password-toggle" type="button" data-password-toggle="login-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
         <div class="toolbar"><button id="login-button">Sign in</button></div><div id="login-message" class="status" role="status"></div>
       </form>
-      <p class="tag">Event organizers sign in at <a href="/">the organizer portal</a>.</p>
+      <p class="tag">This console is restricted to the system manager. Organizers use the NORWEScan app.</p>
     </section>
     <section id="password-panel" class="panel login hidden">
       <p class="tag">FIRST SIGN IN</p><h1>Set a private password.</h1><p>Your system manager account is still using its temporary password.</p>
@@ -37,6 +38,7 @@
     <section id="app" class="hidden">
       <nav class="tabs" aria-label="Management sections">
         <button class="secondary" data-page="overview">Overview</button><button class="secondary" data-page="roster">Roster</button>
+        <button class="secondary" data-page="students">Students</button>
         <button class="secondary" data-page="organizers">Organizers</button><button class="secondary" data-page="events">Events</button>
         <button class="secondary" data-page="attendance">Attendance</button><button id="logout" class="danger">Log out</button>
       </nav>
@@ -47,6 +49,26 @@
         <label for="roster-file">Roster file, up to 1 MB</label><input id="roster-file" type="file" accept=".csv,.xlsx,.xls">
         <div class="toolbar"><button id="preview-roster">Review file</button><button id="upload-roster" class="secondary hidden">Confirm import</button></div>
         <div id="roster-preview"></div>
+      </section>
+      <section id="page-students" class="page panel hidden">
+        <h1>Student accounts</h1><p>Browse students by CCIS program, year, and section. New accounts and password resets use the section as a temporary password; the student must change it after signing in.</p>
+        <div class="grid">
+          <div><label for="student-program">Program</label><select id="student-program"></select></div>
+          <div><label for="student-year">Year level</label><select id="student-year"></select></div>
+        </div>
+        <div class="toolbar"><button id="new-student">Add student</button></div>
+        <div id="student-editor" class="panel hidden">
+          <h2 id="student-editor-title">Add student</h2>
+          <div class="grid">
+            <div><label for="student-id">Student ID</label><input id="student-id" maxlength="100" required></div>
+            <div><label for="student-name">Full name</label><input id="student-name" maxlength="200" required></div>
+            <div><label for="student-section">Section</label><input id="student-section" maxlength="100" placeholder="BSCS-3C" required></div>
+            <div><label for="student-email">Email</label><input id="student-email" type="email" maxlength="320"></div>
+          </div>
+          <p class="muted">Changing a student's section updates the temporary password only if they have not changed it yet.</p>
+          <div class="toolbar"><button id="save-student">Save student</button><button id="cancel-student" class="secondary">Cancel</button></div>
+        </div>
+        <div id="student-list"></div>
       </section>
       <section id="page-organizers" class="page panel hidden">
         <h1>Organizer access</h1><p>Grant scanning access to a student already in the roster. Their existing student ID and password are used. Disabling access revokes online sessions.</p>
@@ -75,7 +97,7 @@
       setPasswordVisibility(button, input, false, false);
       button.addEventListener('click', () => setPasswordVisibility(button, input, input.type === 'password'));
     });
-    const state = { token: sessionStorage.getItem('manager-token'), account: null, overview: null, preview: null };
+    const state = { token: sessionStorage.getItem('manager-token'), account: null, overview: null, preview: null, editingStudent: null };
     const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     async function api(path, options = {}) {
       let response;
@@ -134,13 +156,70 @@
       $('#event-organizers').innerHTML = active.length ? active.map(org=>`<label class="check"><input type="checkbox" value="${esc(org.id)}">${esc(org.name)} · ${esc(org.id)}</label>`).join('') : '<p class="muted">Grant organizer access before assigning an event.</p>';
       $('#create-event').disabled = !active.length;
       $('#event-list').innerHTML = `<h2>Events</h2>${eventTable(d.events)}`;
+      renderStudentDirectory(d.students);
     }
-    function table(headings, rows) { return `<div class="tablewrap"><table><thead><tr>${headings.map(item=>`<th>${item}</th>`).join('')}</tr></thead><tbody>${rows || '<tr><td colspan="6">No records found.</td></tr>'}</tbody></table></div>`; }
+    function sectionInfo(section) {
+      const value = String(section || '').trim();
+      const match = value.match(/^(.+?)[ -]+(\d+)(?:[ -]*[A-Za-z]+)?$/);
+      return match ? { program: match[1].toUpperCase(), year: match[2] } : { program: 'Other', year: 'Other' };
+    }
+    function fillFilter(select, values, label, selected) {
+      select.innerHTML = `<option value="">${label}</option>${values.map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join('')}`;
+      if (values.includes(selected)) select.value = selected;
+    }
+    function renderStudentDirectory(students) {
+      const programSelect = $('#student-program');
+      const yearSelect = $('#student-year');
+      const selectedProgram = programSelect.value;
+      const selectedYear = yearSelect.value;
+      const grouped = students.map(student => ({ ...student, ...sectionInfo(student.section) }));
+      const programs = [...new Set(grouped.map(student => student.program))].sort();
+      fillFilter(programSelect, programs, 'All programs', selectedProgram);
+      const program = programSelect.value;
+      const years = [...new Set(grouped.filter(student => !program || student.program === program).map(student => student.year))]
+        .sort((left, right) => left === 'Other' ? 1 : right === 'Other' ? -1 : Number(left) - Number(right));
+      fillFilter(yearSelect, years, 'All years', selectedYear);
+      const year = yearSelect.value;
+      const visible = grouped.filter(student => (!program || student.program === program) && (!year || student.year === year));
+      const sections = new Map();
+      for (const student of visible) {
+        if (!sections.has(student.section)) sections.set(student.section, []);
+        sections.get(student.section).push(student);
+      }
+      const content = [...sections.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([section, rows]) => {
+        const info = sectionInfo(section);
+        const body = rows.sort((left, right) => left.id.localeCompare(right.id)).map(student => `<tr>
+          <td>${esc(student.id)}</td><td>${esc(student.name)}</td><td>${esc(student.email || '—')}</td>
+          <td><button class="secondary" data-student-edit="${esc(student.id)}">Edit</button>
+          <button class="secondary" data-student-reset="${esc(student.id)}">Reset password</button>
+          <button class="danger" data-student-delete="${esc(student.id)}">Delete</button></td></tr>`).join('');
+        return `<details class="section-group"><summary>${esc(info.program)} / Year ${esc(info.year)} / ${esc(section)} <span class="muted">${rows.length} students</span></summary>
+          ${table(['Student ID','Full name','Email','Actions'], body)}</details>`;
+      }).join('');
+      $('#student-list').innerHTML = content || '<p class="muted">No students match these filters.</p>';
+    }
+    function openStudentEditor(student = null) {
+      state.editingStudent = student?.id || null;
+      $('#student-editor-title').textContent = student ? 'Edit student' : 'Add student';
+      $('#student-id').value = student?.id || '';
+      $('#student-id').disabled = Boolean(student);
+      $('#student-name').value = student?.name || '';
+      $('#student-section').value = student?.section || '';
+      $('#student-email').value = student?.email || '';
+      $('#student-editor').classList.remove('hidden');
+      $('#student-name').focus();
+    }
+    function closeStudentEditor() {
+      state.editingStudent = null;
+      $('#student-editor').classList.add('hidden');
+      $('#student-id').disabled = false;
+    }
+    function table(headings, rows) { return `<div class="tablewrap"><table><thead><tr>${headings.map(item=>`<th>${item}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headings.length}">No records found.</td></tr>`}</tbody></table></div>`; }
     function eventTable(events) { return table(['Event','Date / Time','Location','Organizers','Check-ins'], events.map(event=>`<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td><td>${(event.organizers||[]).map(org=>esc(org.name)).join(', ')||'—'}</td><td>${event.attendance_count ?? 0}</td></tr>`).join('')); }
     $('#login-form').addEventListener('submit', login);
     document.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',async()=>{
       const name=button.dataset.page; showPage(name); message('');
-      try { if(name==='overview'||name==='organizers'||name==='events') await refresh(); if(name==='attendance') await loadAttendance(); }
+      try { if(name==='overview'||name==='students'||name==='organizers'||name==='events') await refresh(); if(name==='attendance') await loadAttendance(); }
       catch(error){message(error.message,true);}
     }));
     $('#logout').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST',body:'{}'});}catch{} sessionStorage.clear();location.reload();});
@@ -160,6 +239,50 @@
       if(!state.preview?.length)return;
       try { const result=await api('/roster/upload',{method:'POST',body:JSON.stringify({students:state.preview})}); state.preview=null;$('#upload-roster').classList.add('hidden');$('#roster-preview').textContent=`Imported. ${result.added} new students added; ${result.skipped} existing accounts kept.`;await refresh();message('Roster import confirmed by the server.'); }
       catch(error){message(error.message,true);}
+    });
+    $('#student-program').addEventListener('change', () => { $('#student-year').value = ''; renderStudentDirectory(state.overview.students); });
+    $('#student-year').addEventListener('change', () => renderStudentDirectory(state.overview.students));
+    $('#new-student').addEventListener('click', () => openStudentEditor());
+    $('#cancel-student').addEventListener('click', closeStudentEditor);
+    $('#save-student').addEventListener('click', async () => {
+      const student = { id: $('#student-id').value.trim(), name: $('#student-name').value.trim(),
+        section: $('#student-section').value.trim(), email: $('#student-email').value.trim() };
+      if (!student.id || !student.name || !student.section) { message('Student ID, full name, and section are required.', true); return; }
+      const editing = state.editingStudent;
+      try {
+        await api(editing ? `/management/students/${encodeURIComponent(editing)}` : '/management/students', {
+          method: editing ? 'PATCH' : 'POST', body: JSON.stringify(student),
+        });
+        closeStudentEditor(); await refresh();
+        message(editing ? 'Student profile updated.' : `Student added. Temporary password: ${student.section}`);
+      } catch(error) { message(error.message, true); }
+    });
+    $('#student-list').addEventListener('click', async event => {
+      const editButton = event.target.closest('[data-student-edit]');
+      const resetButton = event.target.closest('[data-student-reset]');
+      const deleteButton = event.target.closest('[data-student-delete]');
+      if (editButton) {
+        const student = state.overview.students.find(item => item.id === editButton.dataset.studentEdit);
+        if (student) openStudentEditor(student);
+        return;
+      }
+      if (resetButton) {
+        const student = state.overview.students.find(item => item.id === resetButton.dataset.studentReset);
+        if (!student || !confirm(`Reset ${student.name}'s password to the temporary section password (${student.section})? They must change it after signing in.`)) return;
+        try {
+          await api(`/management/students/${encodeURIComponent(student.id)}/password-reset`, { method: 'POST', body: '{}' });
+          await refresh(); message(`Temporary password reset to ${student.section}. The student must change it after signing in.`);
+        } catch(error) { message(error.message, true); }
+        return;
+      }
+      if (deleteButton) {
+        const student = state.overview.students.find(item => item.id === deleteButton.dataset.studentDelete);
+        if (!student || !confirm(`Delete ${student.name} (${student.id})? Their login and organizer access will be removed. Attendance history will be retained.`)) return;
+        try {
+          await api(`/management/students/${encodeURIComponent(student.id)}`, { method: 'DELETE' });
+          await refresh(); message('Student account deleted. Historical attendance was retained.');
+        } catch(error) { message(error.message, true); }
+      }
     });
     $('#promote').addEventListener('click',async()=>{const studentId=$('#student-picker').value;if(!studentId)return;
       try{await api('/management/organizers',{method:'POST',body:JSON.stringify({studentId})});await refresh();message('Organizer access granted. Their student ID and current password remain the same.');}

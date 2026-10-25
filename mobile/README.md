@@ -24,10 +24,10 @@ account is a student or an event organizer. On the server, `ADMIN_ID` and
 `ADMIN_PASSWORD` seed the legacy organizer account; the separate `MANAGER_ID`
 and `MANAGER_PASSWORD` seed the system-manager website account. The IDs and
 passwords must be distinct, and both passwords must be at least 12 characters.
-Open the API URL with `/manager` to import rosters, grant organizer access,
-create and assign events, and review synced attendance. The manager changes the
-initial password on first website sign-in and uses the website, not the scanner
-app.
+Open the API URL with `/manager` to manage student accounts, import rosters,
+grant organizer access, create and assign events, and review synced attendance.
+Only the system-manager role can use its tools. Organizers use the NORWEScan PWA
+or mobile app, not a separate organizer website.
 
 ## Faculty roster
 
@@ -84,9 +84,10 @@ shell when offline. It does not cache API responses or replace the native APK.
 The PWA remembers the active user's ID and role in IndexedDB so the same account
 opens after a browser restart. Explicit logout clears that marker. Browser
 passwords are removed from IndexedDB during migration and are kept only in memory
-while the signed-in page is open. The PWA asks for the current password when it
-needs a new organizer session after a browser restart; it does not persist
-organizer bearer tokens. Roster uploads and attendance sync require internet.
+while the signed-in page is open. The PWA stores the organizer's server session
+token in IndexedDB so an authenticated organizer does not re-enter a password for
+each roster upload. Logout clears that token; if it is revoked or missing, sign in
+online again. Roster uploads and attendance sync require internet.
 Locally saved events, rosters, and pending
 attendance remain available offline. Starting a new session after logout requires
 an online sign-in.
@@ -131,10 +132,13 @@ root, such as `https://norwescan-api.onrender.com`; do not append `/health` or
 `/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Render
 assigns to the static site, then redeploy the API. The release build fails early
 if the API URL is missing, not HTTPS, or contains a route path.
-The static PWA URL is distinct from the API-hosted organizer portal (`/`) and
-system-manager portal (`/manager`). Share the static PWA URL with students and
-organizers. The manager portal still relies on role-based API authorization;
-keeping its URL private is not a substitute for those checks.
+The static PWA URL is distinct from the system-manager console (`/manager`).
+Share the static PWA URL with students and organizers; the API root does not host
+an organizer portal. The manager console relies on role-based API authorization;
+keeping its URL private is not a substitute for those checks. Student records
+can be grouped by program, year, and section, added, edited, reset to a temporary
+section password, or deleted from the manager console. Deleting a student keeps
+their historical attendance records.
 
 The service worker caches only the exported app shell, not API responses.
 Camera access and PWA installation require a secure context such as HTTPS (or
