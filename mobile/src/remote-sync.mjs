@@ -43,8 +43,8 @@ export async function uploadRosterToServer(students, user, token, apiUrl, fetchI
 export async function loginStudentRemotely(identifier, password, apiUrl, fetchImpl = fetch, previousToken) {
   const result = await postJson(apiUrl, '/auth/login', { id: identifier.trim(), password, client: 'mobile' }, fetchImpl, previousToken);
   if (!['student', 'admin'].includes(result.account?.role) || !result.account.id) throw new Error('Server returned an invalid account.');
-  if (result.account.role === 'admin' && typeof result.sessionToken !== 'string') throw new Error('Server did not issue an organizer session.');
-  if (result.account.role === 'admin') result.account.sessionToken = result.sessionToken;
+  if (typeof result.sessionToken !== 'string') throw new Error('Server did not issue an authenticated session.');
+  result.account.sessionToken = result.sessionToken;
   return result.account;
 }
 
@@ -63,9 +63,9 @@ export async function downloadOrganizerBootstrap(token, apiUrl, fetchImpl = fetc
   return result;
 }
 
-export async function changeStudentPasswordRemotely(user, currentPassword, newPassword, apiUrl, fetchImpl = fetch) {
-  if (user?.role !== 'student') throw new Error('Log in as a student to change this password.');
-  return postJson(apiUrl, '/auth/password', { id: user.id, currentPassword, newPassword }, fetchImpl);
+export async function changeStudentPasswordRemotely(user, token, currentPassword, newPassword, apiUrl, fetchImpl = fetch) {
+  if (user?.role !== 'student' || !token) throw new Error('Sign in online as a student to change this password.');
+  return postJson(apiUrl, '/auth/password', { id: user.id, currentPassword, newPassword }, fetchImpl, token);
 }
 
 export async function changeAdminPasswordRemotely(user, token, currentPassword, newPassword, apiUrl, fetchImpl = fetch) {
@@ -80,9 +80,10 @@ export async function logoutAdminRemotely(token, apiUrl, fetchImpl = fetch) {
   return postJson(apiUrl, '/auth/logout', {}, fetchImpl, token);
 }
 
-export async function downloadStudentAttendance(user, password, apiUrl, fetchImpl = fetch) {
+export async function downloadStudentAttendance(user, token, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'student') throw new Error('Log in as a student to refresh attendance.');
-  const result = await postJson(apiUrl, '/student/attendance', { id: user.id, password }, fetchImpl);
+  if (!token) throw new Error('Sign in online as a student to refresh attendance.');
+  const result = await postJson(apiUrl, '/student/attendance', {}, fetchImpl, token);
   if (!Array.isArray(result.records)) throw new Error('Server returned an invalid attendance history.');
   return result.records;
 }
@@ -98,7 +99,7 @@ export async function downloadOrganizerAttendance(user, token, apiUrl, fetchImpl
     });
   } catch { throw new Error('Could not reach the attendance server. Connect to the internet and try again.'); }
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'Could not download organizer attendance.');
+  if (!response.ok) throw requestError(result.error || 'Could not download organizer attendance.', response.status, response.status >= 500);
   if (!Array.isArray(result.records)) throw new Error('Server returned an invalid attendance history.');
   return result.records.map(record => {
     const recordedAt = record.recorded_at || record.recordedAt;
@@ -144,10 +145,10 @@ export async function syncOrganizerWithReauth(data, user, token, apiUrl, fetchIm
   try {
     return await syncToServer(data, user, token, apiUrl, fetchImpl);
   } catch (error) {
-    if (error.status === 401) {
-      throw new Error('Your organizer session has expired. Log out, then sign in online again before uploading. Pending attendance is still saved locally.');
-    }
-    throw new Error(`${error.message} Pending attendance is still saved locally.`);
+    const wrapped = requestError(error.status === 401
+      ? 'Your organizer session expired or was revoked.'
+      : `${error.message} Pending attendance is still saved locally.`, error.status, error.retryable);
+    throw wrapped;
   }
 }
 

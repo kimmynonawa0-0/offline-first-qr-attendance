@@ -1,7 +1,5 @@
-export function hasOrganizerSession(user, session) {
-  return user?.role === 'admin' && session?.id === user.id && typeof session.token === 'string' && Boolean(session.token);
-}
-
-export function organizerRefreshNeedsPassword(platform, user, session) {
-  return platform === 'web' && !hasOrganizerSession(user, session);
+export function hasServerSession(user, session) {
+  return ['admin', 'student'].includes(user?.role) && session?.id === user.id
+    && (!session.role || session.role === user.role)
+    && typeof session.token === 'string' && Boolean(session.token);
 }

@@ -50,10 +50,20 @@ test('web organizer session survives reload and is scoped to the remembered orga
   await persistWebOrganizerSession(storage, { ...user, token: 'server-token' });
 
   assert.deepEqual(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), user), {
-    id: user.id, token: 'server-token',
+    id: user.id, role: 'admin', token: 'server-token',
   });
   assert.equal(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), { id: 'other', role: 'admin' }), null);
   assert.equal(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), { ...user, role: 'student' }), null);
+});
+
+test('web student server session survives reload and is scoped to that student', async () => {
+  const storage = browserStorage();
+  const user = { id: '00123', role: 'student' };
+  await persistWebOrganizerSession(storage, { ...user, token: 'student-server-token' });
+  assert.deepEqual(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), user), {
+    id: user.id, role: 'student', token: 'student-server-token',
+  });
+  assert.equal(restoreWebOrganizerSession(await storage.getItem(WEB_ORGANIZER_SESSION_KEY), { id: '00124', role: 'student' }), null);
 });
 
 test('web organizer logout clears the stored server token', async () => {

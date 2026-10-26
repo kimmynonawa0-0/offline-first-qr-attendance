@@ -18,18 +18,21 @@ export function restoreWebSession(data, saved) {
 }
 
 export async function persistWebOrganizerSession(storage, session) {
-  const saved = session?.id && typeof session.token === 'string' && session.token
-    ? JSON.stringify({ id: session.id, token: session.token })
+  const role = session?.role || 'admin';
+  const saved = session?.id && ['admin', 'student'].includes(role)
+    && typeof session.token === 'string' && session.token
+    ? JSON.stringify({ id: session.id, role, token: session.token })
     : null;
   await storage.setItem(WEB_ORGANIZER_SESSION_KEY, saved);
 }
 
 export function restoreWebOrganizerSession(saved, user) {
-  if (user?.role !== 'admin' || typeof saved !== 'string') return null;
+  if (!['admin', 'student'].includes(user?.role) || typeof saved !== 'string') return null;
   try {
     const session = JSON.parse(saved);
-    return session?.id === user.id && typeof session.token === 'string' && session.token
-      ? { id: session.id, token: session.token }
+    const role = session?.role || (user.role === 'admin' ? 'admin' : null);
+    return session?.id === user.id && role === user.role && typeof session.token === 'string' && session.token
+      ? { id: session.id, role: user.role, token: session.token }
       : null;
   } catch {
     return null;

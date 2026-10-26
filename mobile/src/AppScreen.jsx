@@ -13,10 +13,8 @@ import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
 import { checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
-import { downloadOrganizerAttendance, downloadStudentAttendance, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
+import { downloadOrganizerAttendance, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
-import { hasOrganizerSession, organizerRefreshNeedsPassword } from './attendance-refresh.mjs';
-import { reauthenticateOrganizer } from './web-auth.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt', 'roster-import'];
@@ -133,7 +131,7 @@ function Attendees({ event }) {
 export default function AppScreen() {
   const { page: screen = 'login', eventId, recordId } = useLocalSearchParams();
   const focused = useIsFocused();
-  const { data, user, setUser, adminSession, setAdminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice, startupRoute, consumeStartupRoute } = useApp();
+  const { data, user, setUser, webCredential, adminSession, setAdminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice, startupRoute, consumeStartupRoute } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
   const [eventInfoOpen, setEventInfoOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
@@ -141,8 +139,6 @@ export default function AppScreen() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
-  const [refreshPasswordPrompt, setRefreshPasswordPrompt] = useState('');
-  const [refreshPassword, setRefreshPassword] = useState('');
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   useEffect(() => {
@@ -158,42 +154,47 @@ export default function AppScreen() {
     catch (e) { setError(e.message || 'Could not save. Please try again.'); }
     finally { lock.current = false; setBusy(false); }
   }
-  async function refreshStudentAttendance(enteredPassword) {
+  async function ensureServerSession(forceLogin = false) {
+    const sessionMatches = adminSession?.id === user?.id
+      && (!adminSession.role || adminSession.role === user?.role)
+      && typeof adminSession.token === 'string' && adminSession.token;
+    if (!forceLogin && sessionMatches) return adminSession.token;
     const password = Platform.OS === 'web'
-      ? enteredPassword
-      : await getOfflineCredential(SecureStore, 'student', user?.id);
-    if (!password) throw new Error('Sign in online on this device before refreshing attendance.');
-    const records = await downloadStudentAttendance(user, password, process.env.EXPO_PUBLIC_API_URL);
+      ? webCredential?.id === user?.id && webCredential?.role === user?.role ? webCredential.password : null
+      : await getOfflineCredential(SecureStore, user?.role, user?.id);
+    if (!password) throw new Error('Your server session is unavailable. Sign in online again to continue.');
+    const account = await loginStudentRemotely(user.id, password, process.env.EXPO_PUBLIC_API_URL,
+      fetch, sessionMatches ? adminSession.token : undefined);
+    if (account.role !== user.role) throw new Error('The signed-in account no longer has access to this app.');
+    await setAdminSession({ id: user.id, role: user.role, token: account.sessionToken });
+    return account.sessionToken;
+  }
+  async function withServerSession(action) {
+    let token = await ensureServerSession();
+    try { return await action(token); }
+    catch (error) {
+      if (error.status !== 401) throw error;
+      token = await ensureServerSession(true);
+      return action(token);
+    }
+  }
+  async function refreshStudentAttendance() {
+    const records = await withServerSession(token => downloadStudentAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
     await update(current => mergeStudentAttendance(current, user.id, records));
     return records.length;
   }
-  async function refreshOrganizerAttendance(enteredPassword) {
-    let token = hasOrganizerSession(user, adminSession) ? adminSession.token : null;
-    if (Platform.OS === 'web' && !token) {
-      const session = await reauthenticateOrganizer(user, enteredPassword, process.env.EXPO_PUBLIC_API_URL);
-      token = session.sessionToken;
-      await setAdminSession({ id: user.id, token });
-    }
-    const records = await downloadOrganizerAttendance(user, token, process.env.EXPO_PUBLIC_API_URL);
+  async function refreshOrganizerAttendance() {
+    const records = await withServerSession(token => downloadOrganizerAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
     await update(current => mergeOrganizerAttendance(current, records));
     return records.length;
   }
   function requestAttendanceRefresh(role) {
-    const organizerNeedsPassword = role === 'admin'
-      && organizerRefreshNeedsPassword(Platform.OS, user, adminSession);
-    const studentNeedsPassword = role === 'student' && Platform.OS === 'web';
-    if (organizerNeedsPassword || studentNeedsPassword) {
-      setError('');
-      setRefreshPassword('');
-      setRefreshPasswordPrompt(role);
-      return;
-    }
     const action = role === 'student' ? refreshStudentAttendance : refreshOrganizerAttendance;
     run(action, count => setNotice(`Attendance refreshed. ${count} server record(s) found.`));
   }
   function requestLogout() {
     setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: async () => {
-      if (user?.role === 'admin' && adminSession?.id === user.id) {
+      if (adminSession?.id === user.id) {
         void logoutAdminRemotely(adminSession.token, process.env.EXPO_PUBLIC_API_URL).catch(() => {});
       }
       try {
@@ -233,7 +234,7 @@ export default function AppScreen() {
   else if (screen === 'change-password') content = <ChangePasswordScreen
     onComplete={async account => { await setUser(account); replace(account.role === 'admin' ? 'admin-home' : 'student-home'); }}
     onLogout={async () => {
-      if (user?.role === 'admin' && adminSession?.id === user.id) {
+      if (adminSession?.id === user.id) {
         void logoutAdminRemotely(adminSession.token, process.env.EXPO_PUBLIC_API_URL).catch(() => {});
       }
       await clearAdminSession(); await setUser(null); router.replace('/');
@@ -270,7 +271,7 @@ export default function AppScreen() {
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
     <Metrics items={[["Present today", todayRecords.filter(r => r.status === 'PRESENT').length], ['Pending sync', pending]]} />
     <Button icon="scan-outline" onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : setNotice("There's no event for today.")}>Start scanning</Button>
-    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>There's no event for today.</Muted></Card>}
+    {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>There&apos;s no event for today.</Muted></Card>}
     <RecentActivity records={data.records.slice(0, 4)} onSeeAll={() => go('admin-records')} />
     <Card><Title>Organizer tools</Title>
       <Button secondary onPress={() => go('history')}>View assigned events</Button>
@@ -339,28 +340,11 @@ export default function AppScreen() {
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)}><EventSummary event={currentEvent} /></ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
-    {refreshPasswordPrompt && <ModalFrame title="Verify to refresh" onClose={() => { setRefreshPasswordPrompt(''); setRefreshPassword(''); }} busy={busy}>
-      <Muted>Enter your current password to securely request attendance from the server. It is used for this request only.</Muted>
-      <Field label="Password" password value={refreshPassword} onChangeText={setRefreshPassword} />
-      <ErrorText>{error}</ErrorText>
-      <Button disabled={busy || !refreshPassword} onPress={() => run(
-        () => refreshPasswordPrompt === 'student'
-          ? refreshStudentAttendance(refreshPassword)
-          : refreshOrganizerAttendance(refreshPassword),
-        count => {
-          setRefreshPasswordPrompt('');
-          setRefreshPassword('');
-          setNotice(`Attendance refreshed. ${count} server record(s) found.`);
-        },
-      )}>{busy ? 'Verifying...' : 'Verify and refresh'}</Button>
-    </ModalFrame>}
     {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
       <Muted>Your signed-in organizer session will authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.</Muted>
       <ErrorText>{error}</ErrorText>
       <Button disabled={busy} onPress={() => run(async () => {
-        const token = adminSession?.id === user.id ? adminSession.token : null;
-        const result = await syncOrganizerWithReauth(data, user, token, process.env.EXPO_PUBLIC_API_URL);
-        if (result.sessionToken) await setAdminSession({ id: user.id, token: result.sessionToken });
+        const result = await withServerSession(token => syncOrganizerWithReauth(data, user, token, process.env.EXPO_PUBLIC_API_URL));
         await update(current => markSynced(current, result.acceptedRecordIds));
         return result;
       }, result => {

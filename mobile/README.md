@@ -114,16 +114,20 @@ password or promotes a student using that ID. Remove this demo provisioning
 before production deployment.
 On native apps, a successful sign-in saves only the active user's ID and role
 in SecureStore; the app restores the matching local profile and opens its home
-screen after restart, never a scanner/camera route. Explicit logout clears the
-active session and organizer server token, but keeps the device-protected
-credential so that account can sign in offline again.
+screen after restart, never a scanner/camera route. Server-issued student and
+organizer sessions are stored separately in SecureStore and authorize attendance
+refreshes and uploads without sending the password again. Explicit logout clears
+the active session and server token, but keeps the device-protected credential so
+that account can sign in offline again.
 PWA accounts, rosters, events, and attendance use IndexedDB. On first web launch,
 the app imports the previous AsyncStorage snapshot and removes it only after the
 IndexedDB save succeeds. The active browser session marker also uses IndexedDB;
 browser passwords are stripped during migration and are not persisted. PWA data
 is separate from native SQLite and can be cleared by browser/site-data settings,
 so sync pending attendance before clearing site data. Expo Go, browser previews,
-and standalone builds have separate storage.
+and standalone builds have separate storage. PWA server sessions for students and
+organizers are saved in IndexedDB; refresh and upload requests use the session
+instead of asking for the password again.
 
 To pilot the PWA on Render, create a **Static Site** from this repository with
 root directory `mobile`, build command `npm ci && npm run build:web:release`, and

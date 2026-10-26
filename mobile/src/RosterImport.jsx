@@ -7,11 +7,11 @@ import { Button, Card, colors, ErrorText, Muted, Row, styles, Title } from './ui
 import { useApp } from './state';
 import { importRoster, MAX_ROSTER_BYTES, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
-import { uploadRosterToServer } from './remote-sync.mjs';
+import { loginStudentRemotely, uploadRosterToServer } from './remote-sync.mjs';
 import { authorizeRosterUpload } from './roster-upload-session.mjs';
 
 export default function RosterImport() {
-  const { data, user, update, adminSession, setAdminSession, online } = useApp();
+  const { data, user, update, webCredential, adminSession, setAdminSession, online } = useApp();
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [result, setResult] = useState('');
@@ -77,22 +77,41 @@ export default function RosterImport() {
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
       <Muted>Upload requires internet. The server checks your organizer access and section before saving this roster.</Muted>
       {online !== true && <ErrorText>Connect to the internet before uploading. Your selected file is only being previewed on this device.</ErrorText>}
-      {(!adminSession || adminSession.id !== user.id || !adminSession.token) ? <>
-        <ErrorText>The server has not verified this organizer session on this device.</ErrorText>
-        <Muted>Log out, then sign in online again. Your selected file stays on this device.</Muted>
-      </> : null}
+      {(!adminSession || adminSession.id !== user.id || !adminSession.token)
+        && <Muted>Your signed-in account will authorize this upload. If its server session needs renewal, the app will renew it automatically.</Muted>}
       <View style={styles.localPill}><Ionicons name="alert-circle-outline" size={18} color={colors.yellow} /><Text style={styles.localPillText}>Existing accounts and passwords stay unchanged.</Text></View>
-      <Button disabled={busy || online !== true || adminSession?.id !== user.id || !adminSession?.token} onPress={async () => {
+      <Button disabled={busy || online !== true} onPress={async () => {
         if (lock.current) return;
         lock.current = true; setBusy(true); setError('');
         let uploadedToServer = false;
         try {
+          let session = adminSession?.id === user.id ? adminSession : null;
+          if (!session?.token || session.role && session.role !== 'admin') {
+            const credential = webCredential?.id === user.id && webCredential.role === 'admin' ? webCredential.password : null;
+            if (!credential) throw new Error('Your server session is unavailable. Sign in online again to continue.');
+            const account = await loginStudentRemotely(user.id, credential, process.env.EXPO_PUBLIC_API_URL, fetch,
+              session?.token);
+            if (account.role !== 'admin') throw new Error('This account is not an event organizer.');
+            session = { id: user.id, role: 'admin', token: account.sessionToken };
+            await setAdminSession(session);
+          }
           const authorization = await authorizeRosterUpload({
             user,
-            session: adminSession?.id === user.id ? adminSession : null,
+            session,
             online: online === true,
           });
-          const remoteCounts = await uploadRosterToServer(preview.rows, user, authorization.token, process.env.EXPO_PUBLIC_API_URL);
+          let remoteCounts;
+          try {
+            remoteCounts = await uploadRosterToServer(preview.rows, user, authorization.token, process.env.EXPO_PUBLIC_API_URL);
+          } catch (uploadError) {
+            const credential = webCredential?.id === user.id && webCredential.role === 'admin' ? webCredential.password : null;
+            if (uploadError.status !== 401 || !credential) throw uploadError;
+            const account = await loginStudentRemotely(user.id, credential, process.env.EXPO_PUBLIC_API_URL, fetch, authorization.token);
+            if (account.role !== 'admin') throw new Error('This account is not an event organizer.');
+            session = { id: user.id, role: 'admin', token: account.sessionToken };
+            await setAdminSession(session);
+            remoteCounts = await uploadRosterToServer(preview.rows, user, session.token, process.env.EXPO_PUBLIC_API_URL);
+          }
           uploadedToServer = true;
           let localCounts;
           await update(current => {

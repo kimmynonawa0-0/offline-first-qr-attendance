@@ -68,7 +68,7 @@ export function LoginScreen({ onLogin }) {
                   bootstrap ? mergeOrganizerBootstrap(current, bootstrap) : current,
                   remote.id, undefined, { name: remote.name, section: remote.section, mustChangePassword: remote.mustChangePassword },
                 ));
-                await setAdminSession({ id: remote.id, token: remote.sessionToken });
+                await setAdminSession({ id: remote.id, role: 'admin', token: remote.sessionToken });
                 setAdminAuthIssue('');
                 if (bootstrapError) setNotice(`Signed in. Assigned events could not be downloaded: ${bootstrapError.message}`);
                 await finishLogin(sessionFor(next.admins.find(account => account.id === remote.id), 'admin')); return;
@@ -79,6 +79,7 @@ export function LoginScreen({ onLogin }) {
                 catch { setNotice('Signed in, but this device could not protect an offline password. Offline sign-in is not enabled.'); }
               }
               const next = await update(current => cacheRemoteStudent(current, remote));
+              await setAdminSession({ id: remote.id, role: 'student', token: remote.sessionToken });
               await finishLogin(sessionFor(next.students.find(account => account.id === remote.id), 'student')); return;
             } catch (remoteError) {
               if (native && isRetryableAuthFailure(remoteError)) {
@@ -139,7 +140,15 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
         if (user.role === 'student' && process.env.EXPO_PUBLIC_API_URL) {
           if (!savedPassword) throw new Error('Please sign in again to update your temporary password.');
           const candidate = changePassword(data, user, password, confirm);
-          await changeStudentPasswordRemotely(user, savedPassword, password, process.env.EXPO_PUBLIC_API_URL);
+          let studentToken = adminSession?.id === user.id ? adminSession.token : null;
+          if (!studentToken) {
+            const session = await loginStudentRemotely(user.id, savedPassword, process.env.EXPO_PUBLIC_API_URL);
+            if (session.role !== 'student') throw new Error('This account is not a student account.');
+            studentToken = session.sessionToken;
+            await setAdminSession({ id: user.id, role: 'student', token: studentToken });
+          }
+          await changeStudentPasswordRemotely(user, studentToken,
+            savedPassword, password, process.env.EXPO_PUBLIC_API_URL);
           if (native) {
             try { await saveOfflineCredential(SecureStore, 'student', user.id, password); }
             catch { setNotice('Password changed on the server, but this device could not update its protected offline credential. Sign in online with the new password before using offline access.'); }
@@ -163,7 +172,7 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
             try { await saveOfflineCredential(SecureStore, 'admin', user.id, password); }
             catch { setNotice('Password changed on the server, but this device could not update its protected offline credential. Sign in online with the new password before using offline access.'); }
           }
-          await setAdminSession({ id: user.id, token: updatedSession.sessionToken });
+          await setAdminSession({ id: user.id, role: 'admin', token: updatedSession.sessionToken });
           let bootstrap = null;
           try { bootstrap = await downloadOrganizerBootstrap(updatedSession.sessionToken, process.env.EXPO_PUBLIC_API_URL); }
           catch (bootstrapError) { setNotice(`Password updated. Assigned events could not be downloaded: ${bootstrapError.message}`); }

@@ -62,12 +62,12 @@ test('remote student sign-in and password changes call the server API', async ()
     calls++;
     assert.match(url, /^https:\/\/api\.test\/auth\//);
     return { ok: true, json: async () => url.endsWith('/login')
-      ? { account: { id: '001', name: 'A', section: 'S', role: 'student', mustChangePassword: true } }
+      ? { account: { id: '001', name: 'A', section: 'S', role: 'student', mustChangePassword: true }, sessionToken: 'student-session' }
       : { ok: true } };
   };
   const account = await loginStudentRemotely(' 001 ', 'S', 'https://api.test', fetchImpl);
   assert.equal(account.id, '001');
-  await changeStudentPasswordRemotely({ id: '001', role: 'student' }, 'S', 'long secure password', 'https://api.test', fetchImpl);
+  await changeStudentPasswordRemotely({ id: '001', role: 'student' }, account.sessionToken, 'S', 'long secure password', 'https://api.test', fetchImpl);
   assert.equal(calls, 2);
   await assert.rejects(loginStudentRemotely('001', 'S', '', fetchImpl), /EXPO_PUBLIC_API_URL/);
 });
@@ -102,11 +102,11 @@ test('organizer upload uses the existing session without signing in again', asyn
   assert.equal(data.records[0].synced, false);
 });
 
-test('expired organizer session asks for online sign-in and leaves records pending', async () => {
+test('expired organizer session is reported without discarding pending records', async () => {
   const data = { students: [], events: [], records: [{ id: 'pending', studentId: '1', eventId: 'e', synced: false }] };
   await assert.rejects(syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'expired-token', 'https://api.test', async () => ({
     ok: false, status: 401, json: async () => ({ error: 'Session expired.' }),
-  })), /Log out, then sign in online again.*Pending attendance is still saved locally/);
+  })), error => error.status === 401 && /expired or was revoked/.test(error.message));
   assert.equal(data.records[0].synced, false);
 });
 
@@ -142,18 +142,19 @@ test('online organizer login can rotate the saved token without exposing it in t
   assert.equal(authHeader, 'Bearer old-session-token');
 });
 
-test('student attendance refresh posts credentials and returns server records', async () => {
+test('student attendance refresh uses its session and returns server records', async () => {
   let sent;
   const records = [{ id: 'r1', studentId: '001', eventId: 'e1' }];
-  const result = await downloadStudentAttendance({ id: '001', role: 'student' }, 'private password', 'https://api.test',
+  const result = await downloadStudentAttendance({ id: '001', role: 'student' }, 'student-session', 'https://api.test',
     async (url, options) => {
-      sent = { url, body: JSON.parse(options.body) };
+      sent = { url, body: JSON.parse(options.body), authorization: options.headers.Authorization };
       return { ok: true, json: async () => ({ records }) };
     });
   assert.equal(sent.url, 'https://api.test/student/attendance');
-  assert.deepEqual(sent.body, { id: '001', password: 'private password' });
+  assert.deepEqual(sent.body, {});
+  assert.equal(sent.authorization, 'Bearer student-session');
   assert.deepEqual(result, records);
-  await assert.rejects(downloadStudentAttendance({ id: 'admin', role: 'admin' }, 'pw', 'https://api.test'), /student/);
+  await assert.rejects(downloadStudentAttendance({ id: 'admin', role: 'admin' }, 'token', 'https://api.test'), /student/);
 });
 
 test('organizer attendance refresh uses its session and maps server rows for the app', async () => {
