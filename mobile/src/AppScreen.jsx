@@ -141,7 +141,6 @@ export default function AppScreen() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
-  const [syncPassword, setSyncPassword] = useState('');
   const [refreshPasswordPrompt, setRefreshPasswordPrompt] = useState('');
   const [refreshPassword, setRefreshPassword] = useState('');
   const lock = useRef(false);
@@ -355,25 +354,19 @@ export default function AppScreen() {
         },
       )}>{busy ? 'Verifying...' : 'Verify and refresh'}</Button>
     </ModalFrame>}
-    {syncOpen && <ModalFrame title="Upload to server" onClose={() => { setSyncOpen(false); setSyncPassword(''); }} busy={busy}>
-      <Muted>{Platform.OS === 'web'
-        ? 'Enter your current organizer password to authorize this upload. It is used for this request only.'
-        : 'Your organizer session will securely authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.'}</Muted>
-      {Platform.OS === 'web' && <Field label="Organizer password" password value={syncPassword} onChangeText={setSyncPassword} />}
+    {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
+      <Muted>Your signed-in organizer session will authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.</Muted>
       <ErrorText>{error}</ErrorText>
-      <Button disabled={busy || (Platform.OS === 'web' && !syncPassword)} onPress={() => run(async () => {
-        const password = Platform.OS === 'web' ? syncPassword : await getOfflineCredential(SecureStore, 'admin', user.id);
-        const token = Platform.OS === 'web' ? null : adminSession?.id === user.id ? adminSession.token : null;
-        const result = await syncOrganizerWithReauth(data, user, token,
-          password, process.env.EXPO_PUBLIC_API_URL);
+      <Button disabled={busy} onPress={() => run(async () => {
+        const token = adminSession?.id === user.id ? adminSession.token : null;
+        const result = await syncOrganizerWithReauth(data, user, token, process.env.EXPO_PUBLIC_API_URL);
         if (result.sessionToken) await setAdminSession({ id: user.id, token: result.sessionToken });
         await update(current => markSynced(current, result.acceptedRecordIds));
         return result;
       }, result => {
         setSyncOpen(false);
-        setSyncPassword('');
         setNotice(`Upload complete. ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
-      })}>{busy ? 'Uploading...' : 'Verify and upload'}</Button>
+      })}>{busy ? 'Uploading...' : 'Upload'}</Button>
     </ModalFrame>}
   </SafeAreaView>;
 }

@@ -87,39 +87,26 @@ test('only network failures, timeouts, and server errors are eligible for offlin
   }
 });
 
-test('offline organizer login silently obtains a token before syncing pending records', async () => {
+test('organizer upload uses the existing session without signing in again', async () => {
   const data = { students: [{ id: '1', name: 'A', section: 'S' }], events: [{ id: 'e', name: 'Event' }],
     records: [{ id: 'pending', studentId: '1', eventId: 'e', synced: false }] };
   const calls = [];
-  const result = await syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, null, 'protected-password', 'https://api.test', async (url, options) => {
+  const result = await syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'existing-token', 'https://api.test', async (url, options) => {
     calls.push(url);
-    if (url.endsWith('/auth/login')) return { ok: true, json: async () => ({ account: { id: 'org', role: 'admin' }, sessionToken: 'fresh-token' }) };
-    assert.equal(options.headers.Authorization, 'Bearer fresh-token');
+    assert.equal(options.headers.Authorization, 'Bearer existing-token');
     assert.deepEqual(JSON.parse(options.body).records.map(record => record.id), ['pending']);
     return { ok: true, json: async () => ({ acceptedRecordIds: ['pending'], conflictRecordIds: [] }) };
   });
-  assert.deepEqual(calls, ['https://api.test/auth/login', 'https://api.test/sync']);
-  assert.equal(result.sessionToken, 'fresh-token');
+  assert.deepEqual(calls, ['https://api.test/sync']);
+  assert.equal(result.acceptedRecordIds[0], 'pending');
   assert.equal(data.records[0].synced, false);
 });
 
-test('expired organizer tokens are renewed once, and failed reauthentication leaves records pending', async () => {
+test('expired organizer session asks for online sign-in and leaves records pending', async () => {
   const data = { students: [], events: [], records: [{ id: 'pending', studentId: '1', eventId: 'e', synced: false }] };
-  let syncCalls = 0;
-  const result = await syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'expired-token', 'protected-password', 'https://api.test', async (url, options) => {
-    if (url.endsWith('/auth/login')) return { ok: true, json: async () => ({ account: { id: 'org', role: 'admin' }, sessionToken: 'replacement-token' }) };
-    syncCalls++;
-    if (syncCalls === 1) return { ok: false, status: 401, json: async () => ({ error: 'Session expired.' }) };
-    assert.equal(options.headers.Authorization, 'Bearer replacement-token');
-    return { ok: true, json: async () => ({ acceptedRecordIds: ['pending'], conflictRecordIds: [] }) };
-  });
-  assert.equal(result.sessionToken, 'replacement-token');
-  assert.equal(syncCalls, 2);
-
-  await assert.rejects(syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'expired-token', 'old-password', 'https://api.test', async url => {
-    if (url.endsWith('/auth/login')) return { ok: false, status: 401, json: async () => ({ error: 'Invalid credentials.' }) };
-    return { ok: false, status: 401, json: async () => ({ error: 'Session expired.' }) };
-  }), /Pending attendance is still saved locally/);
+  await assert.rejects(syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'expired-token', 'https://api.test', async () => ({
+    ok: false, status: 401, json: async () => ({ error: 'Session expired.' }),
+  })), /Log out, then sign in online again.*Pending attendance is still saved locally/);
   assert.equal(data.records[0].synced, false);
 });
 

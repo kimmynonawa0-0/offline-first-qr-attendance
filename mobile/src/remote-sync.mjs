@@ -138,34 +138,16 @@ export async function syncToServer(data, user, token, apiUrl, fetchImpl = fetch)
   return result;
 }
 
-export async function syncOrganizerWithReauth(data, user, token, password, apiUrl, fetchImpl = fetch) {
+export async function syncOrganizerWithReauth(data, user, token, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'admin') throw new Error('Log in as an organizer to sync.');
-  if (!password) throw new Error('This device has no protected organizer credential. Sign in online once, then retry. Pending attendance is still saved locally.');
-  let activeToken = token;
-  const hadExistingToken = typeof token === 'string' && token.length > 0;
+  if (!token) throw new Error('Your organizer session is unavailable. Log out, then sign in online again before uploading. Pending attendance is still saved locally.');
   try {
-    if (!activeToken) {
-      const account = await loginStudentRemotely(user.id, password, apiUrl, fetchImpl);
-      if (account.role !== 'admin' || account.accessLevel === 'manager') {
-        throw new Error('This account is not an event organizer. Pending attendance is still saved locally.');
-      }
-      activeToken = account.sessionToken;
-    }
-    try {
-      const result = await syncToServer(data, user, activeToken, apiUrl, fetchImpl);
-      return { ...result, sessionToken: activeToken };
-    } catch (error) {
-      if (error.status !== 401 || !hadExistingToken) throw error;
-      const account = await loginStudentRemotely(user.id, password, apiUrl, fetchImpl);
-      if (account.role !== 'admin' || account.accessLevel === 'manager') {
-        throw new Error('This account is not an event organizer. Pending attendance is still saved locally.');
-      }
-      const result = await syncToServer(data, user, account.sessionToken, apiUrl, fetchImpl);
-      return { ...result, sessionToken: account.sessionToken };
-    }
+    return await syncToServer(data, user, token, apiUrl, fetchImpl);
   } catch (error) {
-    if (/Pending attendance is still saved locally\./.test(error.message)) throw error;
-    throw new Error(`${error.message} Pending attendance is still saved locally. Check your connection or sign in online with the current password, then retry.`);
+    if (error.status === 401) {
+      throw new Error('Your organizer session has expired. Log out, then sign in online again before uploading. Pending attendance is still saved locally.');
+    }
+    throw new Error(`${error.message} Pending attendance is still saved locally.`);
   }
 }
 
