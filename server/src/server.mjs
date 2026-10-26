@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS students (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, section TEXT NOT NULL, email TEXT NOT NULL DEFAULT '',
   password_salt TEXT, password_hash TEXT, must_change_password BOOLEAN NOT NULL DEFAULT TRUE
 );
+CREATE TABLE IF NOT EXISTS student_sessions (
+  token_hash TEXT PRIMARY KEY, student_id TEXT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, location TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL
 );
@@ -96,6 +100,19 @@ async function organizerForRequest(request) {
   const result = await pool.query(`SELECT o.id, o.access_level, o.name, o.section, o.must_change_password
     FROM organizer_sessions s JOIN organizers o ON o.id = s.organizer_id
     WHERE s.token_hash = $1 AND o.enabled = TRUE`, [hashSessionToken(token)]);
+  return result.rows[0] || null;
+}
+
+function bearerToken(request) {
+  return request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1] || null;
+}
+
+async function studentForRequest(request) {
+  const token = bearerToken(request);
+  if (!token) return null;
+  const result = await pool.query(`SELECT s.id, s.name, s.section, s.email, s.must_change_password
+    FROM student_sessions ss JOIN students s ON s.id = ss.student_id
+    WHERE ss.token_hash = $1`, [hashSessionToken(token)]);
   return result.rows[0] || null;
 }
 
@@ -195,13 +212,22 @@ const server = http.createServer(async (request, response) => {
       if (!student?.password_hash || !await passwordMatchesAsync(body.password, student.password_salt, student.password_hash)) {
         return send(401, { error: 'Invalid student ID or password. Contact your faculty if your account has not been imported.' });
       }
+      const token = createOrganizerSessionToken();
+      const previousToken = bearerToken(request);
+      if (previousToken) await pool.query('DELETE FROM student_sessions WHERE token_hash = $1 AND student_id = $2',
+        [hashSessionToken(previousToken), student.id]);
+      await pool.query('INSERT INTO student_sessions (token_hash, student_id) VALUES ($1, $2)',
+        [hashSessionToken(token), student.id]);
       return send(200, { account: { id: student.id, name: student.name, section: student.section, email: student.email,
-        role: 'student', mustChangePassword: student.must_change_password } });
+        role: 'student', mustChangePassword: student.must_change_password }, sessionToken: token });
     }
     if (request.method === 'POST' && request.url === '/auth/password') {
+      const studentSession = await studentForRequest(request);
+      if (!studentSession) return send(401, { error: 'Your student session expired or was revoked. Log in again.' });
       if (typeof body.id !== 'string' || typeof body.currentPassword !== 'string' || typeof body.newPassword !== 'string') {
         return send(400, { error: 'Student ID and both passwords are required.' });
       }
+      if (body.id.trim() !== studentSession.id) return send(403, { error: 'You can only change your own password.' });
       if (body.newPassword.trim().length < 12) return send(400, { error: 'Use at least 12 characters for your new password.' });
       const result = await pool.query('SELECT section, password_salt, password_hash FROM students WHERE id = $1', [body.id.trim()]);
       const student = result.rows[0];
@@ -212,6 +238,8 @@ const server = http.createServer(async (request, response) => {
       const salt = randomBytes(16).toString('hex');
       await pool.query('UPDATE students SET password_salt = $2, password_hash = $3, must_change_password = FALSE WHERE id = $1',
         [body.id.trim(), salt, await passwordHashAsync(body.newPassword, salt)]);
+      await pool.query('DELETE FROM student_sessions WHERE student_id = $1 AND token_hash <> $2',
+        [studentSession.id, hashSessionToken(bearerToken(request))]);
       return send(200, { ok: true });
     }
     if (request.method === 'POST' && request.url === '/auth/admin/password') {
@@ -234,6 +262,7 @@ const server = http.createServer(async (request, response) => {
           credential_initialized = TRUE, must_change_password = FALSE WHERE id = $1`, [organizerAccount.id, salt, hash]);
         await client.query(`UPDATE students SET password_salt = $2, password_hash = $3, must_change_password = FALSE
           WHERE id = $1`, [organizerAccount.id, salt, hash]);
+        await client.query('DELETE FROM student_sessions WHERE student_id = $1', [organizerAccount.id]);
         await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [organizerAccount.id]);
         await client.query('INSERT INTO organizer_sessions (token_hash, organizer_id) VALUES ($1, $2)',
           [hashSessionToken(token), organizerAccount.id]);
@@ -244,19 +273,18 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'POST' && request.url === '/auth/logout') {
       const token = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
-      if (token) await pool.query('DELETE FROM organizer_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
+      if (token) {
+        await pool.query('DELETE FROM organizer_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
+        await pool.query('DELETE FROM student_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
+      }
       return send(200, { ok: true });
     }
     if (request.method === 'POST' && request.url === '/student/attendance') {
-      if (typeof body.id !== 'string' || typeof body.password !== 'string') return send(400, { error: 'Student ID and password are required.' });
-      const account = await pool.query('SELECT password_salt, password_hash FROM students WHERE id = $1', [body.id.trim()]);
-      const student = account.rows[0];
-      if (!student?.password_hash || !await passwordMatchesAsync(body.password, student.password_salt, student.password_hash)) {
-        return send(401, { error: 'Student ID or password could not be verified.' });
-      }
+      const student = await studentForRequest(request);
+      if (!student) return send(401, { error: 'Your student session expired or was revoked. Log in again.' });
       const result = await pool.query(`SELECT id, student_id, student_name, event_id, event_name, location,
           recorded_at, attendance_date, attendance_time, method
-        FROM attendance WHERE student_id = $1 ORDER BY recorded_at DESC, id`, [body.id.trim()]);
+        FROM attendance WHERE student_id = $1 ORDER BY recorded_at DESC, id`, [student.id]);
       return send(200, { records: result.rows.map(record => ({
         id: record.id, studentId: record.student_id, studentName: record.student_name,
         eventId: record.event_id, event: record.event_name || 'Attendance', location: record.location,
@@ -440,7 +468,10 @@ const server = http.createServer(async (request, response) => {
           await client.query("UPDATE organizers SET name = $2, section = $3 WHERE id = $1 AND access_level = 'organizer'",
             [studentId, student.name, student.section]);
         }
-        if (sectionChanged) await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [studentId]);
+        if (sectionChanged) {
+          await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [studentId]);
+          await client.query('DELETE FROM student_sessions WHERE student_id = $1', [studentId]);
+        }
         await writeAudit(client, manager.id, 'student_updated', studentId, {
           sectionChanged, emailChanged: previous.rows[0].email !== student.email,
           nameChanged: previous.rows[0].name !== student.name,
@@ -469,6 +500,7 @@ const server = http.createServer(async (request, response) => {
         const hash = await passwordHashAsync(result.rows[0].section, salt);
         await client.query(`UPDATE students SET password_salt = $2, password_hash = $3, must_change_password = TRUE WHERE id = $1`,
           [studentId, salt, hash]);
+        await client.query('DELETE FROM student_sessions WHERE student_id = $1', [studentId]);
         await client.query(`UPDATE organizers SET salt = $2, password_hash = $3, credential_initialized = TRUE,
           must_change_password = TRUE WHERE id = $1 AND access_level = 'organizer'`, [studentId, salt, hash]);
         await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [studentId]);
