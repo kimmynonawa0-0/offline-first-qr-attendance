@@ -3,6 +3,7 @@ const testFiles = [
   '../src/today-event.test.mjs',
   '../src/sqlite-storage.test.mjs',
   '../src/remote-sync.test.mjs',
+  '../src/server-refresh.test.mjs',
   '../src/offline-auth.test.mjs',
   '../src/web-session.test.mjs',
   '../src/web-auth.test.mjs',

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { eventForToday } from './today-event.mjs';
@@ -15,6 +15,8 @@ import Scanner from './Scanner';
 import { attendanceStatus, checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
 import { downloadOrganizerAttendance, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
+import { serverRefreshScope } from './server-refresh.mjs';
+import PullToRefreshScrollView from './PullToRefreshScrollView';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt', 'roster-import'];
@@ -145,6 +147,7 @@ export default function AppScreen() {
   const [eventInfoOpen, setEventInfoOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
@@ -201,6 +204,19 @@ export default function AppScreen() {
     const action = role === 'student' ? refreshStudentAttendance : refreshOrganizerAttendance;
     run(action, count => setNotice(`Attendance refreshed. ${count} server record(s) found.`));
   }
+  async function refreshCurrentScreen() {
+    if (!canPullToRefresh || lock.current) return;
+    if (online === false) {
+      setNotice('You are offline. Showing the records saved on this device.');
+      return;
+    }
+    setRefreshing(true);
+    try {
+      await run(refreshStudentAttendance, count => setNotice(`Attendance updated. ${count} server record(s) found.`));
+    } finally {
+      setRefreshing(false);
+    }
+  }
   function requestLogout() {
     setConfirm({ title: 'Log out?', message: 'Your records will remain saved on this device.', action: async () => {
       if (adminSession?.id === user.id) {
@@ -220,6 +236,8 @@ export default function AppScreen() {
   if (startupRoute && ['scanner', 'receipt'].includes(screen)) return focused ? <Redirect href={`/${startupRoute}`} /> : null;
   const account = user && data[user.role === 'admin' ? 'admins' : 'students'].find(a => a.id === user.id);
   const mustChange = Boolean(account?.mustChangePassword);
+  const refreshScope = serverRefreshScope(screen, user?.role);
+  const canPullToRefresh = Boolean(refreshScope && !mustChange);
   if (!authScreen && !user) return focused ? <Redirect href="/" /> : null;
   if (user && mustChange && screen !== 'change-password') return focused ? <Redirect href="/change-password" /> : null;
   if (user && !mustChange && screen === 'change-password') return focused ? <Redirect href={`/${home}`} /> : null;
@@ -260,14 +278,8 @@ export default function AppScreen() {
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>My check-ins</Text><Text style={styles.summaryValue}>{personalRecords.length}</Text><Text style={styles.summaryDetail}>Saved on this device</Text></View>
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>Latest record</Text><Text numberOfLines={2} style={styles.summaryDetail}>{latestPersonalRecord?.event || 'No record yet'}</Text>{latestPersonalRecord && <Muted>{latestPersonalRecord.date} / {latestPersonalRecord.time}</Muted>}</View>
     </Row>
-    <Button secondary disabled={busy || !online} onPress={() => requestAttendanceRefresh('student')}>
-      {busy ? 'Refreshing...' : online ? 'Refresh my attendance' : 'Connect to refresh attendance'}
-    </Button>
   </>;
   else if (screen === 'records') content = <><Field label="Search event" value={query} onChangeText={setQuery} />
-    <Button secondary disabled={busy || !online} onPress={() => requestAttendanceRefresh('student')}>
-      {busy ? 'Refreshing...' : online ? 'Refresh from server' : 'Offline / showing saved records'}
-    </Button>
     <RecordList records={personalRecords.filter(r => `${r.event} ${r.date}`.toLowerCase().includes(query.toLowerCase()))} /></>;
   else if (screen === 'profile') content = <Card>
     <Ionicons name="person-circle-outline" size={48} color={colors.yellow} />
@@ -337,9 +349,15 @@ export default function AppScreen() {
       {!authScreen && <HeaderBar screen={screen} user={user} online={online} eventId={eventId} adminSession={adminSession} />}
       {!!notice && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setNotice('')} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable>}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+        <PullToRefreshScrollView
+          enabled={canPullToRefresh}
+          refreshing={refreshing}
+          onRefresh={refreshCurrentScreen}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scroll}
+        >
           <ErrorText>{error}</ErrorText>{content}
-        </ScrollView>
+        </PullToRefreshScrollView>
       </KeyboardAvoidingView>
       {user && !mustChange && !['scanner', 'receipt'].includes(screen) && <View style={styles.nav}>
         <NavItem active={screen === home} icon={screen === home ? 'home' : 'home-outline'} label={user.role === 'admin' ? 'Dashboard' : 'Home'} onPress={() => replace(home)} />
