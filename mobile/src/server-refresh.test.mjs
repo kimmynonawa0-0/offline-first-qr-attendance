@@ -7,10 +7,15 @@ test('student home and records refresh student attendance', () => {
   assert.equal(serverRefreshScope('records', 'student'), 'student-attendance');
 });
 
-test('screens without student attendance do not use the student pull refresh', () => {
+test('organizer data screens refresh the assigned bootstrap', () => {
+  for (const screen of ['admin-home', 'admin-records', 'history', 'event', 'scanner']) {
+    assert.equal(serverRefreshScope(screen, 'admin'), 'organizer-bootstrap');
+  }
+});
+
+test('screens without server-backed data do not refresh', () => {
   for (const [screen, role] of [
-    ['profile', 'student'], ['admin-home', 'admin'], ['admin-records', 'admin'],
-    ['history', 'admin'], ['event', 'admin'], ['scanner', 'admin'], ['receipt', 'admin'],
+    ['profile', 'student'], ['profile', 'admin'], ['receipt', 'admin'],
     ['roster-import', 'admin'], ['student-home', 'admin'], ['history', 'student'],
   ]) {
     assert.equal(serverRefreshScope(screen, role), null);

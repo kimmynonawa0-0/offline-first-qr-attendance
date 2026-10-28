@@ -12,8 +12,8 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { attendanceStatus, checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
-import { downloadOrganizerAttendance, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
+import { attendanceStatus, checkIn, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
 import { serverRefreshScope } from './server-refresh.mjs';
 import PullToRefreshScrollView from './PullToRefreshScrollView';
@@ -190,20 +190,6 @@ export default function AppScreen() {
       return action(token);
     }
   }
-  async function refreshStudentAttendance() {
-    const records = await withServerSession(token => downloadStudentAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
-    await update(current => mergeStudentAttendance(current, user.id, records));
-    return records.length;
-  }
-  async function refreshOrganizerAttendance() {
-    const records = await withServerSession(token => downloadOrganizerAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
-    await update(current => mergeOrganizerAttendance(current, records));
-    return records.length;
-  }
-  function requestAttendanceRefresh(role) {
-    const action = role === 'student' ? refreshStudentAttendance : refreshOrganizerAttendance;
-    run(action, count => setNotice(`Attendance refreshed. ${count} server record(s) found.`));
-  }
   async function refreshCurrentScreen() {
     if (!canPullToRefresh || lock.current) return;
     if (online === false) {
@@ -212,7 +198,18 @@ export default function AppScreen() {
     }
     setRefreshing(true);
     try {
-      await run(refreshStudentAttendance, count => setNotice(`Attendance updated. ${count} server record(s) found.`));
+      await run(async () => {
+        if (refreshScope === 'student-attendance') {
+          const records = await withServerSession(token => downloadStudentAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
+          await update(current => mergeStudentAttendance(current, user.id, records));
+          return { kind: 'student', count: records.length };
+        }
+        const bootstrap = await withServerSession(token => downloadOrganizerBootstrap(token, process.env.EXPO_PUBLIC_API_URL));
+        await update(current => mergeOrganizerBootstrap(current, bootstrap));
+        return { kind: 'organizer', records: bootstrap.attendance?.length || 0, events: bootstrap.events.length };
+      }, result => setNotice(result.kind === 'student'
+        ? `Attendance updated. ${result.count} server record(s) found.`
+        : `Events and attendance updated. ${result.events} assigned event(s), ${result.records} server record(s).`));
     } finally {
       setRefreshing(false);
     }
@@ -303,9 +300,6 @@ export default function AppScreen() {
   </>;
   else if (screen === 'roster-import') content = <RosterImport />;
   else if (screen === 'admin-records') content = <>
-    <Button secondary disabled={busy || !online || (Platform.OS !== 'web' && adminSession?.id !== user.id)} onPress={() => requestAttendanceRefresh('admin')}>
-      {busy ? 'Refreshing...' : !online ? 'Connect to refresh attendance' : Platform.OS !== 'web' && adminSession?.id !== user.id ? 'Sign in online to refresh' : 'Refresh from server'}
-    </Button>
     <RecordList records={data.records} />
   </>;
   else if (screen === 'history') content = <History events={assignedEvents} onManage={id => go('event', { eventId: id })} />;

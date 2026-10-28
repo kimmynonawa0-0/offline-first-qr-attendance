@@ -60,7 +60,9 @@ export async function downloadOrganizerBootstrap(token, apiUrl, fetchImpl = fetc
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Could not download assigned organizer data.');
   if (!Array.isArray(result.students) || !Array.isArray(result.events)) throw new Error('Server returned invalid organizer data.');
-  return result;
+  return Array.isArray(result.attendance)
+    ? { ...result, attendance: result.attendance.map(mapAttendanceRecord) }
+    : result;
 }
 
 export async function changeStudentPasswordRemotely(user, token, currentPassword, newPassword, apiUrl, fetchImpl = fetch) {

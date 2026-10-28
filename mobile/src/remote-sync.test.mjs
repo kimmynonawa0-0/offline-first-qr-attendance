@@ -26,13 +26,19 @@ test('remote sync sends only pending receipts and confirms only accepted IDs', a
 });
 
 test('organizer bootstrap sends its session and returns the assigned offline data', async () => {
-  const bootstrap = { students: [{ id: '1', name: 'A', section: 'S' }], events: [{ id: 'e' }] };
+  const bootstrap = { students: [{ id: '1', name: 'A', section: 'S' }], events: [{ id: 'e' }], attendance: [
+    { id: 'r1', student_id: '1', student_name: 'A Student', event_id: 'e', event_name: 'Assembly',
+      recorded_at: '2026-10-28T01:00:00.000Z', time_in_at: '2026-10-28T01:00:00.000Z', time_in_method: 'scan' },
+  ] };
   const result = await downloadOrganizerBootstrap('session-token', 'https://api.test/', async (url, options) => {
     assert.equal(url, 'https://api.test/organizer/bootstrap');
     assert.equal(options.headers.Authorization, 'Bearer session-token');
     return { ok: true, json: async () => bootstrap };
   });
-  assert.deepEqual(result, bootstrap);
+  assert.deepEqual(result.students, bootstrap.students);
+  assert.deepEqual(result.events, bootstrap.events);
+  assert.equal(result.attendance[0].studentId, '1');
+  assert.equal(result.attendance[0].timeInMethod, 'scan');
 });
 
 test('failed server response leaves local data untouched', async () => {
