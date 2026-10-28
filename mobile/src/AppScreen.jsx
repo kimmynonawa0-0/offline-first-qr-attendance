@@ -12,7 +12,7 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { attendanceStatus, checkIn, localDate, mergeOrganizerAttendance, mergeStudentAttendance, methodLabel } from './model.mjs';
 import { downloadOrganizerAttendance, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
@@ -72,6 +72,12 @@ function EventSummary({ event }) {
   return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {event.time}</Muted></>;
 }
 
+function displayTime(value, fallback = 'Not recorded') {
+  if (!value) return fallback;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 function EventRow({ event, onPress }) {
   const when = event.date === localDate() ? 'Today' : event.date;
   const label = event.date === localDate() ? 'Current event' : 'Latest event';
@@ -103,9 +109,11 @@ function RecordList({ records }) {
   return records.length ? records.map(record => <Card key={record.id}>
     <Title>{record.event}</Title>
     <Text style={{ color: colors.ink, fontWeight: '700' }}>{record.studentName} ({record.studentId})</Text>
-    <Muted>{record.date} at {record.time}</Muted>
-    <Muted>{methodLabel(record.method)}</Muted>
-    <Text style={{ color: colors.yellow, fontWeight: '800' }}>PRESENT / {record.synced ? 'Synced' : 'Saved locally'}</Text>
+    <Muted>{record.date}</Muted>
+    <Muted>Time In: {record.timeIn || record.time || displayTime(record.timeInAt || record.recordedAt)}</Muted>
+    <Muted>Time Out: {record.timeOut || displayTime(record.timeOutAt)}</Muted>
+    <Muted>Methods: {methodLabel(record.timeInMethod || record.method)}{record.timeOutAt ? ` / ${methodLabel(record.timeOutMethod)}` : ''}</Muted>
+    <Text style={{ color: colors.yellow, fontWeight: '800' }}>{record.timeOutAt ? 'COMPLETED' : 'TIMED IN'} / {record.synced ? 'Synced' : 'Saved locally'}</Text>
   </Card>) : <Muted>No attendance records yet.</Muted>;
 }
 
@@ -124,12 +132,13 @@ function History({ events, onManage }) {
 function Attendees({ event }) {
   return event.attendees.length ? event.attendees.map(a => <View key={a.id} style={{ marginBottom: 10 }}>
     <Text style={{ color: colors.ink, fontWeight: '700' }}>{a.name} ({a.id})</Text>
-    <Muted>{a.time} / {methodLabel(a.method)}</Muted>
+    <Muted>Time In: {a.time || displayTime(a.timeInAt)} / {methodLabel(a.method)}</Muted>
+    <Muted>Time Out: {a.timeOut || displayTime(a.timeOutAt)}</Muted>
   </View>) : <Muted>No students checked in yet.</Muted>;
 }
 
 export default function AppScreen() {
-  const { page: screen = 'login', eventId, recordId } = useLocalSearchParams();
+  const { page: screen = 'login', eventId, recordId, scanMode = 'time-in' } = useLocalSearchParams();
   const focused = useIsFocused();
   const { data, user, setUser, webCredential, adminSession, setAdminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice, startupRoute, consumeStartupRoute } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
@@ -291,29 +300,33 @@ export default function AppScreen() {
   else if (screen === 'event' && event) content = <>
     <Card admin><EventSummary event={event} /><Button purple onPress={() => go('scanner', { eventId })}>Scan for this event</Button></Card>
     <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
-      <Text style={{ color: colors.ink }}>{ownAttendance ? `Present: ${methodLabel(ownAttendance.method)} at ${ownAttendance.time}` : 'You have not checked in to this event yet.'}</Text>
-      <Button disabled={busy || Boolean(ownAttendance)} onPress={() => run(() => update(d => checkIn(d, user, eventId, user, 'organizer', Crypto.randomUUID())), () => setNotice('You are present as an organizer.'))}>{ownAttendance ? 'Already present' : 'Check myself in'}</Button>
+      <Muted>Time In: {ownAttendance?.time || displayTime(ownAttendance?.timeInAt)}</Muted>
+      <Muted>Time Out: {ownAttendance?.timeOut || displayTime(ownAttendance?.timeOutAt)}</Muted>
+      <Button disabled={busy || attendanceStatus(data, eventId, user.id).status === 'completed'} onPress={() => run(() => update(d => checkIn(d, user, eventId, user, 'organizer', Crypto.randomUUID(), attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'time-in' : 'time-out')), () => setNotice(attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Time In recorded.' : 'Time Out recorded.'))}>{attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Check myself in (Time In)' : attendanceStatus(data, eventId, user.id).status === 'timed-in' ? 'Check myself out (Time Out)' : 'Attendance complete'}</Button>
       <Button secondary onPress={() => setQrOpen(true)}>My QR</Button><Muted>Self check-in is recorded as organizer attendance.</Muted>
     </Card>
     <Card><Title>Attendees ({event.attendees.length})</Title><Attendees event={event} /></Card>
   </>;
-  else if (screen === 'scanner' && event) content = <Scanner data={data} busy={busy} onSave={(person, method) => {
-    const id = Crypto.randomUUID();
-    run(() => update(d => checkIn(d, user, eventId, person, method, id)), () => replace('receipt', { eventId, recordId: id }));
+  else if (screen === 'scanner' && event) content = <Scanner data={data} eventId={eventId} initialMode={scanMode} busy={busy} onSave={(person, method, action) => {
+    const id = action === 'time-in'
+      ? Crypto.randomUUID()
+      : attendanceStatus(data, eventId, person.id).record?.id;
+    run(() => update(d => checkIn(d, user, eventId, person, method, id, action)), () => replace('receipt', { eventId, recordId: id, scanMode: action }));
   }} />;
   else if (screen === 'receipt' && receipt) content = <>
     <View style={styles.receiptPreview}>
       <View style={styles.receiptQr}><QRCode value={receipt.studentId} size={140} /><Text style={styles.qrText}>{receipt.studentId}</Text></View>
       <ScanCorners />
     </View>
-    <View style={styles.successBanner}><Ionicons name="checkmark-circle" size={27} color={colors.black} /><Text style={styles.successText}>ATTENDANCE RECORDED</Text></View>
+    <View style={styles.successBanner}><Ionicons name="checkmark-circle" size={27} color={colors.black} /><Text style={styles.successText}>{receipt.timeOutAt ? 'TIME OUT RECORDED' : 'TIME IN RECORDED'}</Text></View>
     <Card>
       <View style={styles.dataRow}><Text style={styles.dataLabel}>Student</Text><Text style={styles.dataValue}>{receipt.studentName} / {receipt.studentId}</Text></View>
       <View style={styles.dataRow}><Text style={styles.dataLabel}>Event</Text><Text style={styles.dataValue}>{receipt.event}</Text></View>
-      <View style={styles.dataRow}><Text style={styles.dataLabel}>Time</Text><Text style={styles.dataValue}>{receipt.time}</Text></View>
-      <Muted>{methodLabel(receipt.method)} / Saved locally</Muted>
+      <Muted>Time In: {receipt.timeIn || receipt.time}</Muted>
+      <Muted>Time Out: {receipt.timeOut || displayTime(receipt.timeOutAt)}</Muted>
+      <Muted>{receipt.timeOutAt ? `${methodLabel(receipt.timeOutMethod)} / ` : ''}${methodLabel(receipt.timeInMethod || receipt.method)} / Saved locally</Muted>
     </Card>
-    <Button icon="scan-outline" onPress={() => replace('scanner', { eventId: receipt.eventId })}>Scan next</Button>
+    <Button icon="scan-outline" onPress={() => replace('scanner', { eventId: receipt.eventId, scanMode })}>Scan next</Button>
     <Button secondary onPress={() => replace('event', { eventId: receipt.eventId })}>Done</Button>
   </>;
   else content = <Card><Title>Page or event not found</Title><Button onPress={() => replace(home)}>Back to dashboard</Button></Card>;

@@ -82,7 +82,7 @@ export function mergeOrganizerBootstrap(data, bootstrap) {
       ? next.events.map(item => item.id === event.id ? { ...item, ...event, assignedToOrganizer: true, attendees: item.attendees || [] } : item)
       : [...next.events, { ...event, assignedToOrganizer: true, attendees: event.attendees || [] }] };
   }
-  return next;
+  return Array.isArray(bootstrap.attendance) ? mergeOrganizerAttendance(next, bootstrap.attendance) : next;
 }
 
 export function mergeStudentAttendance(data, studentId, remoteRecords) {
@@ -93,7 +93,11 @@ export function mergeStudentAttendance(data, studentId, remoteRecords) {
     requireValue(record?.studentId === studentId && typeof record.id === 'string' && record.id
       && typeof record.eventId === 'string' && record.eventId && typeof record.recordedAt === 'string' && record.recordedAt,
       'The server returned an invalid attendance record.');
-    records.set(record.id, { ...record, synced: true });
+    const local = records.get(record.id);
+    records.set(record.id, local && !local.synced
+      ? { ...record, ...local, timeOutAt: local.timeOutAt || record.timeOutAt || null,
+        timeOut: local.timeOut || record.timeOut || '', timeOutMethod: local.timeOutMethod || record.timeOutMethod || null, synced: false }
+      : { ...record, synced: true });
   }
   return { ...data, records: [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || '')) };
 }
@@ -104,14 +108,23 @@ export function mergeOrganizerAttendance(data, remoteRecords) {
   for (const record of remoteRecords) {
     requireValue(record?.id && record.studentId && record.studentName && record.eventId && record.event
       && record.recordedAt, 'The server returned an invalid attendance record.');
-    records.set(record.id, { ...record, synced: true });
+    const local = records.get(record.id);
+    records.set(record.id, local && !local.synced
+      ? { ...record, ...local, timeOutAt: local.timeOutAt || record.timeOutAt || null,
+        timeOut: local.timeOut || record.timeOut || '', timeOutMethod: local.timeOutMethod || record.timeOutMethod || null, synced: false }
+      : { ...record, synced: true });
   }
   const mergedRecords = [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || ''));
   const events = data.events.map(event => {
     const attendees = new Map((event.attendees || []).map(attendee => [attendee.id, attendee]));
-    for (const record of remoteRecords.filter(item => item.eventId === event.id)) {
+    for (const record of mergedRecords.filter(item => item.eventId === event.id)) {
+      if (!record.studentName) continue;
       attendees.set(record.studentId, {
-        id: record.studentId, name: record.studentName, time: record.time, method: record.method,
+        id: record.studentId, name: record.studentName,
+        time: record.timeIn || record.time, method: record.timeInMethod || record.method,
+        timeInAt: record.timeInAt || record.recordedAt,
+        timeOutAt: record.timeOutAt || null, timeOut: record.timeOut || '',
+        timeOutMethod: record.timeOutMethod || null,
       });
     }
     return { ...event, attendees: [...attendees.values()] };
@@ -162,9 +175,18 @@ export function deleteEvent(data, user, id) {
   return { ...data, events: data.events.filter(e => e.id !== id) };
 }
 
-export function checkIn(data, user, eventId, person, method, recordId, now = new Date()) {
+export function attendanceStatus(data, eventId, studentId) {
+  const record = data.records.find(item => item.eventId === eventId && item.studentId === studentId);
+  const attendee = data.events.find(item => item.id === eventId)?.attendees?.find(item => item.id === studentId);
+  const timeInAt = record?.timeInAt || record?.recordedAt || attendee?.timeInAt || null;
+  const timeOutAt = record?.timeOutAt || attendee?.timeOutAt || null;
+  return { record, timeInAt, timeOutAt, status: !timeInAt ? 'not-in' : !timeOutAt ? 'timed-in' : 'completed' };
+}
+
+export function checkIn(data, user, eventId, person, method, recordId, action = 'time-in', now = new Date()) {
   requireAdmin(data, user);
   requireValue(['organizer', 'scan'].includes(method), 'Invalid check-in method.');
+  requireValue(['time-in', 'time-out'].includes(action), 'Choose Time In or Time Out.');
   const event = data.events.find(e => e.id === eventId);
   requireValue(event, 'Event no longer exists.');
   const student = method === 'organizer' ? user : person;
@@ -173,16 +195,46 @@ export function checkIn(data, user, eventId, person, method, recordId, now = new
   const id = student.id.trim();
   const name = student.name.trim();
   requireValue(id && name, 'Enter the student ID and full name.');
-  requireValue(!event.attendees.some(a => a.id === id), 'This student is already present for this event.');
+  const current = attendanceStatus(data, eventId, id);
+  if (action === 'time-in') requireValue(current.status === 'not-in', 'This student is already timed in for this event.');
+  if (action === 'time-out') {
+    requireValue(current.status !== 'not-in', 'This student has no Time In recorded for this event.');
+    requireValue(current.status !== 'completed', 'This student is already timed out for this event.');
+    requireValue(current.record, 'The Time In record is unavailable on this device. Refresh attendance before recording Time Out.');
+  }
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timestamp = now.toISOString();
+  if (action === 'time-out') {
+    const updatedRecord = { ...current.record, timeOutAt: timestamp, timeOut: time, timeOutMethod: method, synced: false };
+    return {
+      ...data,
+      events: data.events.map(item => {
+        if (item.id !== eventId) return item;
+        const attendees = item.attendees || [];
+        const exists = attendees.some(attendee => attendee.id === id);
+        return { ...item, attendees: exists
+          ? attendees.map(attendee => attendee.id === id
+            ? { ...attendee, timeOutAt: timestamp, timeOut: time, timeOutMethod: method }
+            : attendee)
+          : [...attendees, { id, name, time: current.record.timeIn || current.record.time,
+            method: current.record.timeInMethod || current.record.method, timeInAt: current.timeInAt,
+            timeOutAt: timestamp, timeOut: time, timeOutMethod: method }] };
+      }),
+      records: data.records.map(record => record.id === current.record.id ? updatedRecord : record),
+    };
+  }
   const record = {
     id: recordId, studentId: id, studentName: name, eventId, event: event.name,
-    location: event.location, date: localDate(now), time, recordedAt: now.toISOString(),
+    location: event.location, date: localDate(now), time, timeIn: time,
+    recordedAt: timestamp, timeInAt: timestamp, timeInMethod: method,
+    timeOutAt: null, timeOut: '', timeOutMethod: null,
     status: 'PRESENT', method, synced: false,
   };
   return {
     ...data,
-    events: data.events.map(e => e.id === eventId ? { ...e, attendees: [...e.attendees, { id, name, time, method }] } : e),
+    events: data.events.map(e => e.id === eventId ? { ...e, attendees: [...e.attendees, {
+      id, name, time, method, timeInAt: timestamp, timeOutAt: null,
+    }] } : e),
     records: [record, ...data.records],
   };
 }

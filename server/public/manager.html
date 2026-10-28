@@ -11,7 +11,8 @@
     button,input,select{font:inherit}button{border:0;border-radius:10px;padding:12px 16px;background:var(--yellow);color:#15160e;font-weight:800;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.secondary{background:#2d3929;color:var(--ink);border:1px solid #536349}.danger{background:#512c27;color:#ffe7df;border:1px solid #87483e}
     .shell{max-width:1120px;margin:auto;padding:24px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:8px 0 20px}.brand{font-weight:950;letter-spacing:.08em}.brand span{color:var(--yellow)}.tag{color:var(--muted);font-size:.85rem}
     .panel{background:linear-gradient(145deg,#1b2119,#151914);border:1px solid var(--line);border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 18px 50px #0003}.login{max-width:440px;margin:12vh auto}.hidden{display:none!important}h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.6rem,4vw,2.35rem);line-height:1.12}h2{font-size:1.2rem}p,.muted{color:var(--muted)}label{display:block;color:var(--muted);font-size:.9rem;margin:12px 0 5px}input,select{width:100%;padding:12px;background:#10140f;color:var(--ink);border:1px solid #46503f;border-radius:9px}input[type=file]{padding:9px}.password-field{position:relative}.password-field input{padding-right:52px}.password-toggle{position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:8px;background:transparent;color:var(--muted);border:0;transition:color .2s,transform .18s}.password-toggle:hover{color:var(--yellow)}.password-toggle:active{transform:translateY(-50%) scale(.9)}.password-toggle:focus-visible{outline:2px solid var(--yellow);outline-offset:1px}.password-toggle svg{display:block;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;overflow:visible}.password-toggle svg.eye-change{animation:eye-change .24s ease-out}@keyframes eye-change{0%{opacity:.35;transform:scale(.72) rotate(-8deg)}65%{opacity:1;transform:scale(1.12) rotate(3deg)}100%{transform:scale(1) rotate(0)}}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:14px}.metric{font-size:1.8rem;font-weight:900;color:var(--yellow)}.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:18px 0}.tabs{display:flex;overflow:auto;gap:8px;margin:18px 0}.tabs button{white-space:nowrap}.tabs .secondary{background:transparent}.status{min-height:1.5em;color:var(--yellow);margin:10px 0}.error{color:var(--red)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:640px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 9px;font-size:.8rem}.pill.on{border-color:#63844a;color:#bde095}.pill.off{border-color:#87534b;color:#ffb6a7}.picklist{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px}.check{display:flex;align-items:center;gap:9px;padding:6px 3px;color:var(--ink)}.check input{width:auto}
-    .section-group{border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:12px}.section-group summary{cursor:pointer;color:var(--yellow);font-weight:800;padding:6px}.section-group summary .muted{float:right;font-weight:400}
+    .section-group{border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:12px}.section-group summary{cursor:pointer;color:var(--yellow);font-weight:800;padding:6px}.section-group summary .muted{float:right;font-weight:400}.student-select{width:auto;vertical-align:middle;margin-right:8px}.section-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0}.student-actions{white-space:nowrap}
+    dialog{max-width:min(440px,calc(100% - 28px));background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:22px}dialog::backdrop{background:#000a}
     @media(max-width:600px){.shell{padding:14px}.panel{padding:16px}.top{align-items:flex-start}.top .tag{max-width:130px;text-align:right}}
   </style>
 </head>
@@ -67,7 +68,7 @@
           <div><label for="student-program">Program</label><select id="student-program"></select></div>
           <div><label for="student-year">Year level</label><select id="student-year"></select></div>
         </div>
-        <div class="toolbar"><button id="new-student">Add student</button></div>
+        <div class="toolbar"><button id="new-student">Add student</button><button id="delete-selected-students" class="danger" disabled>Delete selected (0)</button></div>
         <div id="student-editor" class="panel hidden">
           <h2 id="student-editor-title">Add student</h2>
           <div class="grid">
@@ -107,6 +108,7 @@
       </section>
     </section>
   </main>
+  <dialog id="section-delete-dialog"><form id="section-delete-form"><h2 id="section-delete-title">Confirm section deletion</h2><p>Re-enter the system manager password to permanently delete this section.</p><label for="section-delete-password">System manager password</label><input id="section-delete-password" type="password" autocomplete="current-password" required><div class="toolbar"><button id="section-delete-confirm">Delete section</button><button id="section-delete-cancel" class="secondary" type="button">Cancel</button></div></form></dialog>
   <script>
     const $ = selector => document.querySelector(selector);
     function setPasswordVisibility(button, input, visible, animate = true) {
@@ -120,7 +122,7 @@
       setPasswordVisibility(button, input, false, false);
       button.addEventListener('click', () => setPasswordVisibility(button, input, input.type === 'password'));
     });
-    const state = { token: sessionStorage.getItem('manager-token'), account: null, overview: null, preview: null, editingStudent: null };
+    const state = { token: sessionStorage.getItem('manager-token'), account: null, overview: null, preview: null, editingStudent: null, selectedStudents: new Set() };
     const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     async function api(path, options = {}) {
       let response;
@@ -131,6 +133,29 @@
       return result;
     }
     function message(text, error = false) { const node = $('#message'); node.textContent = text; node.className = `status${error ? ' error' : ''}`; }
+    function requestSectionPassword(section) {
+      const dialog = $('#section-delete-dialog');
+      $('#section-delete-title').textContent = `Delete entire ${section} section?`;
+      $('#section-delete-password').value = '';
+      dialog.showModal();
+      return new Promise(resolve => {
+        const form = $('#section-delete-form');
+        const cancel = $('#section-delete-cancel');
+        const onSubmit = event => { event.preventDefault(); finish($('#section-delete-password').value); };
+        const onCancel = () => finish(null);
+        const finish = password => {
+          form.removeEventListener('submit', onSubmit);
+          cancel.removeEventListener('click', onCancel);
+          dialog.removeEventListener('cancel', onCancel);
+          if (dialog.open) dialog.close();
+          $('#section-delete-password').value = '';
+          resolve(password);
+        };
+        form.addEventListener('submit', onSubmit);
+        cancel.addEventListener('click', onCancel);
+        dialog.addEventListener('cancel', onCancel);
+      });
+    }
     function showPage(name) { document.querySelectorAll('.page').forEach(page => page.classList.toggle('hidden', page.id !== `page-${name}`)); }
     async function login(event) {
       event.preventDefault(); $('#login-message').textContent = 'Checking account…'; $('#login-button').disabled = true;
@@ -250,12 +275,14 @@
       }
       const content = [...sections.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([section, rows]) => {
         const info = sectionInfo(section);
+        const allSectionCount = students.filter(student => student.section === section).length;
         const body = rows.sort((left, right) => left.id.localeCompare(right.id)).map(student => `<tr>
-          <td>${esc(student.id)}</td><td>${esc(student.name)}</td><td>${esc(student.email || '—')}</td>
-          <td><button class="secondary" data-student-edit="${esc(student.id)}">Edit</button>
+          <td><label><input class="student-select" type="checkbox" data-student-select="${esc(student.id)}"${state.selectedStudents.has(student.id) ? ' checked' : ''} aria-label="Select ${esc(student.name)}"></label>${esc(student.id)}</td><td>${esc(student.name)}</td><td>${esc(student.email || '—')}</td>
+          <td class="student-actions"><button class="secondary" data-student-edit="${esc(student.id)}">Edit</button>
           <button class="secondary" data-student-reset="${esc(student.id)}">Reset password</button>
           <button class="danger" data-student-delete="${esc(student.id)}">Delete</button></td></tr>`).join('');
-        return `<details class="section-group"><summary>${esc(info.program)} / Year ${esc(info.year)} / ${esc(section)} <span class="muted">${rows.length} students</span></summary>
+        return `<details class="section-group"><summary>${esc(info.program)} / Year ${esc(info.year)} / ${esc(section)} <span class="muted">${allSectionCount} students</span></summary>
+          <div class="section-actions"><span class="muted">${rows.length} shown by current filters</span><button class="danger" data-section-delete="${esc(section)}" data-section-count="${allSectionCount}">Delete entire section (${allSectionCount})</button></div>
           ${table(['Student ID','Full name','Email','Actions'], body)}</details>`;
       }).join('');
       $('#student-list').innerHTML = content || '<p class="muted">No students match these filters.</p>';
@@ -304,6 +331,22 @@
     });
     $('#student-program').addEventListener('change', () => { $('#student-year').value = ''; renderStudentDirectory(state.overview.students); });
     $('#student-year').addEventListener('change', () => renderStudentDirectory(state.overview.students));
+    function updateSelectedStudents() {
+      for (const id of [...state.selectedStudents]) if (!state.overview?.students.some(student => student.id === id)) state.selectedStudents.delete(id);
+      const button = $('#delete-selected-students');
+      button.textContent = `Delete selected (${state.selectedStudents.size})`;
+      button.disabled = state.selectedStudents.size === 0;
+    }
+    $('#delete-selected-students').addEventListener('click', async () => {
+      const selected = [...state.selectedStudents];
+      if (!selected.length || !confirm(`Delete ${selected.length} selected student account${selected.length === 1 ? '' : 's'}? Organizer access will be removed; attendance history will be retained.`)) return;
+      const button = $('#delete-selected-students'); button.disabled = true;
+      try {
+        for (const id of selected) await api(`/management/students/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        state.selectedStudents.clear(); await refresh(); updateSelectedStudents();
+        message(`${selected.length} student account${selected.length === 1 ? '' : 's'} deleted. Historical attendance was retained.`);
+      } catch (error) { await refresh(); updateSelectedStudents(); message(error.message, true); }
+    });
     $('#new-student').addEventListener('click', () => openStudentEditor());
     $('#cancel-student').addEventListener('click', closeStudentEditor);
     $('#save-student').addEventListener('click', async () => {
@@ -323,6 +366,28 @@
       const editButton = event.target.closest('[data-student-edit]');
       const resetButton = event.target.closest('[data-student-reset]');
       const deleteButton = event.target.closest('[data-student-delete]');
+      const sectionDeleteButton = event.target.closest('[data-section-delete]');
+      const selectInput = event.target.closest('[data-student-select]');
+      if (selectInput) {
+        if (selectInput.checked) state.selectedStudents.add(selectInput.dataset.studentSelect);
+        else state.selectedStudents.delete(selectInput.dataset.studentSelect);
+        updateSelectedStudents(); return;
+      }
+      if (sectionDeleteButton) {
+        const section = sectionDeleteButton.dataset.sectionDelete;
+        const count = Number(sectionDeleteButton.dataset.sectionCount);
+        if (!confirm(`Permanently delete all ${count} student account${count === 1 ? '' : 's'} in ${section}? This cannot be undone. Attendance history will be retained.`)) return;
+        const password = await requestSectionPassword(section);
+        if (password === null) return;
+        if (!password) { message('Password is required to delete a section.', true); return; }
+        sectionDeleteButton.disabled = true;
+        try {
+          const result = await api(`/management/sections/${encodeURIComponent(section)}`, { method: 'DELETE', body: JSON.stringify({ password }) });
+          state.selectedStudents.clear(); await refresh(); updateSelectedStudents();
+          message(`Deleted ${result.deleted} student account${result.deleted === 1 ? '' : 's'} from ${section}. Historical attendance was retained.`);
+        } catch (error) { sectionDeleteButton.disabled = false; message(error.message, true); }
+        return;
+      }
       if (editButton) {
         const student = state.overview.students.find(item => item.id === editButton.dataset.studentEdit);
         if (student) openStudentEditor(student);
@@ -342,7 +407,9 @@
         if (!student || !confirm(`Delete ${student.name} (${student.id})? Their login and organizer access will be removed. Attendance history will be retained.`)) return;
         try {
           await api(`/management/students/${encodeURIComponent(student.id)}`, { method: 'DELETE' });
+          state.selectedStudents.delete(student.id);
           await refresh(); message('Student account deleted. Historical attendance was retained.');
+          updateSelectedStudents();
         } catch(error) { message(error.message, true); }
       }
     });
@@ -361,7 +428,7 @@
       try{await api('/management/events',{method:'POST',body:JSON.stringify({event,organizerIds})});$('#event-name').value='';$('#event-location').value='';$('#event-organizers').querySelectorAll('input').forEach(input=>input.checked=false);await refresh();message('Event created and assigned. Organizers can download it when they sign in online.');}
       catch(error){message(error.message,true);}
     });
-    async function loadAttendance(){const result=await api('/management/attendance');$('#attendance-list').innerHTML=table(['Student ID','Student','Event','Location','Recorded at','Method'],result.records.map(row=>`<tr><td>${esc(row.student_id)}</td><td>${esc(row.student_name)}</td><td>${esc(row.event_name)}</td><td>${esc(row.location)}</td><td>${esc(row.recorded_at)}</td><td>${esc(row.method)}</td></tr>`).join(''));}
+    async function loadAttendance(){const result=await api('/management/attendance');$('#attendance-list').innerHTML=table(['Student ID','Student','Event','Location','Time In','Time Out'],result.records.map(row=>`<tr><td>${esc(row.student_id)}</td><td>${esc(row.student_name)}</td><td>${esc(row.event_name)}</td><td>${esc(row.location)}</td><td>${esc(row.time_in_at||row.recorded_at)} / ${esc(row.time_in_method||row.method)}</td><td>${esc(row.time_out_at||'—')}${row.time_out_method?` / ${esc(row.time_out_method)}`:''}</td></tr>`).join(''));}
     if(state.token){state.account={id:'',name:'System Manager'};enter();}
   </script>
 </body>

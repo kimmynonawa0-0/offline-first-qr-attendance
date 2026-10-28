@@ -54,14 +54,15 @@ CREATE TABLE IF NOT EXISTS attendance (
   id TEXT PRIMARY KEY, student_id TEXT NOT NULL, student_name TEXT NOT NULL,
   event_id TEXT NOT NULL, event_name TEXT NOT NULL, location TEXT NOT NULL,
   recorded_at TEXT NOT NULL, attendance_date TEXT, attendance_time TEXT, method TEXT NOT NULL,
+  time_in_at TEXT NOT NULL, time_in_method TEXT NOT NULL, time_out_at TEXT, time_out_method TEXT,
   UNIQUE (event_id, student_id)
 );`);
-await pool.query(`ALTER TABLE organizers ADD COLUMN IF NOT EXISTS access_level TEXT NOT NULL DEFAULT 'organizer';
 await pool.query(`CREATE TABLE IF NOT EXISTS manager_recovery_codes (
   manager_id TEXT PRIMARY KEY REFERENCES organizers(id) ON DELETE CASCADE,
   code_hash TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );`);
+await pool.query(`ALTER TABLE organizers ADD COLUMN IF NOT EXISTS access_level TEXT NOT NULL DEFAULT 'organizer';
   ALTER TABLE organizers ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
   ALTER TABLE organizers ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Organizer';
   ALTER TABLE organizers ADD COLUMN IF NOT EXISTS section TEXT NOT NULL DEFAULT '';
@@ -71,6 +72,14 @@ await pool.query(`CREATE TABLE IF NOT EXISTS manager_recovery_codes (
   ALTER TABLE students ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT TRUE;`);
 await pool.query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_date TEXT;
   ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_time TEXT;
+  ALTER TABLE attendance ADD COLUMN IF NOT EXISTS time_in_at TEXT;
+  ALTER TABLE attendance ADD COLUMN IF NOT EXISTS time_in_method TEXT;
+  ALTER TABLE attendance ADD COLUMN IF NOT EXISTS time_out_at TEXT;
+  ALTER TABLE attendance ADD COLUMN IF NOT EXISTS time_out_method TEXT;
+  UPDATE attendance SET time_in_at = recorded_at WHERE time_in_at IS NULL;
+  UPDATE attendance SET time_in_method = method WHERE time_in_method IS NULL;
+  ALTER TABLE attendance ALTER COLUMN time_in_at SET NOT NULL;
+  ALTER TABLE attendance ALTER COLUMN time_in_method SET NOT NULL;
   CREATE INDEX IF NOT EXISTS attendance_student_recorded_at_idx ON attendance (student_id, recorded_at DESC);`);
 const organizerSalt = randomBytes(16).toString('hex');
 await pool.query(`INSERT INTO organizers (id, salt, password_hash, credential_initialized, access_level, name)
@@ -277,15 +286,6 @@ const server = http.createServer(async (request, response) => {
       finally { client.release(); }
       return send(200, { ok: true, sessionToken: token });
     }
-    if (request.method === 'POST' && request.url === '/auth/logout') {
-      const token = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
-      if (token) {
-        await pool.query('DELETE FROM organizer_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
-        await pool.query('DELETE FROM student_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
-      }
-      return send(200, { ok: true });
-    }
-    if (request.method === 'POST' && request.url === '/student/attendance') {
     if (request.method === 'POST' && request.url === '/auth/admin/recovery-code') {
       const account = await organizerForRequest(request);
       if (!isManager(account) || account.id !== MANAGER_ID) return send(403, { error: 'Only the signed-in system manager can create a recovery code.' });
@@ -324,18 +324,29 @@ const server = http.createServer(async (request, response) => {
       } finally { client.release(); }
       return send(200, { ok: true });
     }
+    if (request.method === 'POST' && request.url === '/auth/logout') {
+      const token = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
+      if (token) {
+        await pool.query('DELETE FROM organizer_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
+        await pool.query('DELETE FROM student_sessions WHERE token_hash = $1', [hashSessionToken(token)]);
+      }
+      return send(200, { ok: true });
+    }
+    if (request.method === 'POST' && request.url === '/student/attendance') {
       const student = await studentForRequest(request);
       if (!student) return send(401, { error: 'Your student session expired or was revoked. Log in again.' });
       const result = await pool.query(`SELECT id, student_id, student_name, event_id, event_name, location,
-          recorded_at, attendance_date, attendance_time, method
+          recorded_at, attendance_date, attendance_time, method, time_in_at, time_in_method, time_out_at, time_out_method
         FROM attendance WHERE student_id = $1 ORDER BY recorded_at DESC, id`, [student.id]);
       return send(200, { records: result.rows.map(record => ({
         id: record.id, studentId: record.student_id, studentName: record.student_name,
         eventId: record.event_id, event: record.event_name || 'Attendance', location: record.location,
         recordedAt: record.recorded_at,
         date: record.attendance_date || record.recorded_at.slice(0, 10),
-        time: record.attendance_time || new Date(record.recorded_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-        status: 'PRESENT', method: record.method, synced: true,
+        time: record.attendance_time || new Date(record.time_in_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+        status: 'PRESENT', method: record.time_in_method,
+        time_in_at: record.time_in_at, time_in_method: record.time_in_method,
+        time_out_at: record.time_out_at, time_out_method: record.time_out_method, synced: true,
       })) });
     }
     if (request.method === 'POST' && request.url === '/roster/upload') {
@@ -412,7 +423,12 @@ const server = http.createServer(async (request, response) => {
       const students = organizer.access_level === 'manager'
         ? await pool.query('SELECT id, name, section FROM students ORDER BY id')
         : await pool.query('SELECT id, name, section FROM students WHERE section = $1 ORDER BY id', [organizer.section]);
-      return send(200, { events: result.rows.map(event => ({ ...event, attendees: [] })), students: students.rows });
+      const attendance = await pool.query(`SELECT a.id, a.student_id, a.student_name, a.event_id, a.event_name,
+        a.location, a.recorded_at, a.attendance_date, a.attendance_time, a.method,
+        a.time_in_at, a.time_in_method, a.time_out_at, a.time_out_method
+        FROM attendance a JOIN event_organizers eo ON eo.event_id = a.event_id
+        WHERE eo.organizer_id = $1 ORDER BY a.recorded_at DESC`, [organizer.id]);
+      return send(200, { events: result.rows.map(event => ({ ...event, attendees: [] })), students: students.rows, attendance: attendance.rows });
     }
     if (request.method === 'GET' && request.url === '/organizer/attendance') {
       const organizer = await organizerForRequest(request);
@@ -420,7 +436,8 @@ const server = http.createServer(async (request, response) => {
       if (organizer.access_level !== 'organizer') return send(403, { error: 'System manager accounts use the management website.' });
       if (organizer.must_change_password) return send(403, { error: 'Change your temporary password before viewing attendance.' });
       const result = await pool.query(`SELECT a.id, a.student_id, a.student_name, a.event_id, a.event_name,
-        a.location, a.recorded_at, a.method FROM attendance a
+        a.location, a.recorded_at, a.method, a.attendance_date, a.attendance_time,
+        a.time_in_at, a.time_in_method, a.time_out_at, a.time_out_method FROM attendance a
         JOIN event_organizers eo ON eo.event_id = a.event_id
         WHERE eo.organizer_id = $1 ORDER BY a.recorded_at DESC LIMIT 500`, [organizer.id]);
       return send(200, { records: result.rows });
@@ -554,6 +571,37 @@ const server = http.createServer(async (request, response) => {
       } catch (error) { await client.query('ROLLBACK'); throw error; }
       finally { client.release(); }
     }
+    if (request.method === 'DELETE' && request.url.startsWith('/management/sections/')) {
+      const manager = await organizerForRequest(request);
+      if (!manager) return send(401, { error: 'Sign in to the management website.' });
+      if (!isManager(manager)) return send(403, { error: 'Only a system manager can delete a section.' });
+      const encodedSection = request.url.slice('/management/sections/'.length);
+      if (!encodedSection || encodedSection.includes('/')) return send(404, { error: 'Section was not found.' });
+      const section = decodeURIComponent(encodedSection).trim();
+      if (!section || section.length > 100) return send(400, { error: 'Enter a valid section.' });
+      if (typeof body.password !== 'string' || !body.password) return send(400, { error: 'Re-enter the system manager password to delete a section.' });
+      const credentials = await pool.query('SELECT salt, password_hash FROM organizers WHERE id = $1 AND access_level = \'manager\'', [manager.id]);
+      if (!credentials.rows[0] || !await passwordMatchesAsync(body.password, credentials.rows[0].salt, credentials.rows[0].password_hash)) {
+        return send(401, { error: 'The system manager password is incorrect. No students were deleted.' });
+      }
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const students = await client.query('SELECT id FROM students WHERE section = $1 ORDER BY id FOR UPDATE', [section]);
+        if (!students.rowCount) {
+          await client.query('ROLLBACK');
+          return send(404, { error: 'No student accounts were found in that section.' });
+        }
+        const studentIds = students.rows.map(student => student.id);
+        await client.query('DELETE FROM organizer_sessions WHERE organizer_id = ANY($1::text[])', [studentIds]);
+        await client.query("DELETE FROM organizers WHERE id = ANY($1::text[]) AND access_level = 'organizer'", [studentIds]);
+        await client.query('DELETE FROM students WHERE id = ANY($1::text[])', [studentIds]);
+        await writeAudit(client, manager.id, 'section_deleted', section, { studentCount: studentIds.length });
+        await client.query('COMMIT');
+        return send(200, { ok: true, deleted: studentIds.length, attendanceHistoryPreserved: true });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    }
     if (request.method === 'DELETE' && request.url.startsWith('/management/students/')) {
       const manager = await organizerForRequest(request);
       if (!manager) return send(401, { error: 'Sign in to the management website.' });
@@ -655,7 +703,8 @@ const server = http.createServer(async (request, response) => {
       if (!isManager(manager)) return send(403, { error: 'Only a system manager can view all attendance.' });
       const eventId = new URL(request.url, 'http://localhost').searchParams.get('eventId');
       const result = await pool.query(`SELECT id, student_id, student_name, event_id, event_name, location,
-        recorded_at, method FROM attendance WHERE ($1::text IS NULL OR event_id = $1)
+        recorded_at, attendance_date, attendance_time, method, time_in_at, time_in_method,
+        time_out_at, time_out_method FROM attendance WHERE ($1::text IS NULL OR event_id = $1)
         ORDER BY recorded_at DESC`, [eventId]);
       return send(200, { records: result.rows });
     }

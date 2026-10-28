@@ -37,6 +37,14 @@ export function validateBatch(body) {
   }
   for (const record of body.records) {
     if (!record || !['id', 'studentId', 'studentName', 'eventId', 'recordedAt'].every(key => typeof record[key] === 'string' && record[key].trim())) throw new Error('Invalid attendance record.');
+    const timeInAt = record.timeInAt || record.recordedAt;
+    if (typeof timeInAt !== 'string' || Number.isNaN(Date.parse(timeInAt))) throw new Error('Invalid Time In timestamp.');
+    if (record.timeOutAt !== undefined && record.timeOutAt !== null
+      && (typeof record.timeOutAt !== 'string' || Number.isNaN(Date.parse(record.timeOutAt)))) throw new Error('Invalid Time Out timestamp.');
+    if (record.timeOutAt && !timeInAt) throw new Error('Time Out requires a Time In.');
+    for (const method of [record.timeInMethod || record.method || 'scan', record.timeOutMethod]) {
+      if (method !== undefined && method !== null && !['scan', 'organizer'].includes(method)) throw new Error('Invalid attendance method.');
+    }
   }
 }
 
@@ -54,12 +62,22 @@ export async function saveBatch(client, body) {
         [event.id, event.name, event.location, event.date, event.time]);
     }
     for (const record of body.records) {
-      await client.query(`INSERT INTO attendance (id, student_id, student_name, event_id, event_name, location, recorded_at, attendance_date, attendance_time, method)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`,
+      const timeInAt = record.timeInAt || record.recordedAt;
+      const timeInMethod = record.timeInMethod || record.method || 'scan';
+      const saved = await client.query(`INSERT INTO attendance
+          (id, student_id, student_name, event_id, event_name, location, recorded_at, attendance_date,
+           attendance_time, method, time_in_at, time_in_method, time_out_at, time_out_method)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ON CONFLICT (event_id, student_id) DO UPDATE SET
+          time_out_at = COALESCE(EXCLUDED.time_out_at, attendance.time_out_at),
+          time_out_method = COALESCE(EXCLUDED.time_out_method, attendance.time_out_method)
+        WHERE attendance.id = EXCLUDED.id AND attendance.time_in_at = EXCLUDED.time_in_at
+          AND (EXCLUDED.time_out_at IS NULL OR attendance.time_out_at IS NULL OR attendance.time_out_at = EXCLUDED.time_out_at)
+        RETURNING id`,
       [record.id, record.studentId, record.studentName, record.eventId, record.event || '', record.location || '',
-        record.recordedAt, record.date || null, record.time || null, record.method || 'scan']);
-      const found = await client.query('SELECT id FROM attendance WHERE event_id = $1 AND student_id = $2', [record.eventId, record.studentId]);
-      if (found.rows[0]?.id === record.id) acceptedRecordIds.push(record.id);
+        timeInAt, record.date || null, record.timeIn || record.time || null, timeInMethod,
+        timeInAt, timeInMethod, record.timeOutAt || null, record.timeOutMethod || null]);
+      if (saved.rows[0]?.id === record.id) acceptedRecordIds.push(record.id);
       else conflictRecordIds.push(record.id);
     }
     await client.query('COMMIT');

@@ -15,6 +15,13 @@ test('sync rejects malformed attendance batches before database writes', () => {
   assert.doesNotThrow(() => validateBatch(batch));
   assert.throws(() => validateBatch({ ...batch, records: [{ id: 'r' }] }), /Invalid attendance/);
   assert.throws(() => validateBatch({ ...batch, students: {} }), /Missing students/);
+  const paired = { ...batch, records: [{ id: 'r', studentId: 's', studentName: 'Student', eventId: 'e',
+    recordedAt: '2026-10-26T08:00:00.000Z', timeInAt: '2026-10-26T08:00:00.000Z', timeInMethod: 'scan',
+    timeOutAt: '2026-10-26T17:00:00.000Z', timeOutMethod: 'scan' }] };
+  assert.doesNotThrow(() => validateBatch(paired));
+  assert.throws(() => validateBatch({ ...batch, records: [{ ...paired.records[0], recordedAt: 'bad', timeInAt: null }] }), /Invalid Time In/);
+  assert.throws(() => validateBatch({ ...batch, records: [{ ...paired.records[0], timeOutAt: 'bad' }] }), /Invalid Time Out/);
+  assert.throws(() => validateBatch({ ...batch, records: [{ ...paired.records[0], timeInMethod: 'forged' }] }), /Invalid attendance method/);
 });
 
 test('roster validation rejects duplicate IDs and malformed rows', () => {

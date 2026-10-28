@@ -144,7 +144,9 @@ test('online organizer login can rotate the saved token without exposing it in t
 
 test('student attendance refresh uses its session and returns server records', async () => {
   let sent;
-  const records = [{ id: 'r1', studentId: '001', eventId: 'e1' }];
+  const records = [{ id: 'r1', student_id: '001', student_name: 'A Student', event_id: 'e1', event_name: 'Assembly',
+    recorded_at: '2026-10-17T02:30:00.000Z', attendance_date: '2026-10-17', attendance_time: '10:30 AM',
+    time_in_at: '2026-10-17T02:30:00.000Z', time_in_method: 'scan', time_out_at: '2026-10-17T10:00:00.000Z', time_out_method: 'organizer' }];
   const result = await downloadStudentAttendance({ id: '001', role: 'student' }, 'student-session', 'https://api.test',
     async (url, options) => {
       sent = { url, body: JSON.parse(options.body), authorization: options.headers.Authorization };
@@ -153,7 +155,9 @@ test('student attendance refresh uses its session and returns server records', a
   assert.equal(sent.url, 'https://api.test/student/attendance');
   assert.deepEqual(sent.body, {});
   assert.equal(sent.authorization, 'Bearer student-session');
-  assert.deepEqual(result, records);
+  assert.equal(result[0].timeInAt, records[0].time_in_at);
+  assert.equal(result[0].timeOutAt, records[0].time_out_at);
+  assert.equal(result[0].timeOutMethod, 'organizer');
   await assert.rejects(downloadStudentAttendance({ id: 'admin', role: 'admin' }, 'token', 'https://api.test'), /student/);
 });
 
@@ -163,14 +167,15 @@ test('organizer attendance refresh uses its session and maps server rows for the
     async (url, options) => {
       sentUrl = url;
       assert.equal(options.headers.Authorization, 'Bearer organizer-token');
-      return { ok: true, json: async () => ({ records: [{ id: 'r1', student_id: '001', student_name: 'A Student', event_id: 'e1', event_name: 'Assembly', location: 'Hall', recorded_at: '2026-10-17T02:30:00.000Z', method: 'scan' }] }) };
+      return { ok: true, json: async () => ({ records: [{ id: 'r1', student_id: '001', student_name: 'A Student', event_id: 'e1', event_name: 'Assembly', location: 'Hall', recorded_at: '2026-10-17T02:30:00.000Z', attendance_date: '2026-10-17', attendance_time: '10:30 AM', method: 'scan', time_in_at: '2026-10-17T02:30:00.000Z', time_in_method: 'scan', time_out_at: '2026-10-17T10:00:00.000Z', time_out_method: 'organizer' }] }) };
     });
   assert.equal(sentUrl, 'https://api.test/organizer/attendance');
   assert.deepEqual(records[0], {
     id: 'r1', studentId: '001', studentName: 'A Student', eventId: 'e1', event: 'Assembly', location: 'Hall',
-    recordedAt: '2026-10-17T02:30:00.000Z', date: '2026-10-17',
-    time: new Date('2026-10-17T02:30:00.000Z').toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-    status: 'PRESENT', method: 'scan',
+    recordedAt: '2026-10-17T02:30:00.000Z', timeInAt: '2026-10-17T02:30:00.000Z',
+    timeOutAt: '2026-10-17T10:00:00.000Z', date: '2026-10-17', time: '10:30 AM', timeIn: '10:30 AM',
+    timeOut: new Date('2026-10-17T10:00:00.000Z').toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+    status: 'PRESENT', method: 'scan', timeInMethod: 'scan', timeOutMethod: 'organizer',
   });
   await assert.rejects(downloadOrganizerAttendance({ id: '23-02330', role: 'admin' }, null, 'https://api.test'), /Sign in online/);
 });

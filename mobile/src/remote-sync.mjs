@@ -80,12 +80,45 @@ export async function logoutAdminRemotely(token, apiUrl, fetchImpl = fetch) {
   return postJson(apiUrl, '/auth/logout', {}, fetchImpl, token);
 }
 
+function localTime(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+}
+
+function mapAttendanceRecord(record) {
+  const recordedAt = record.recorded_at || record.recordedAt;
+  const timeInAt = record.time_in_at || record.timeInAt || recordedAt;
+  const timeOutAt = record.time_out_at || record.timeOutAt || null;
+  const timeInMethod = record.time_in_method || record.timeInMethod || record.method || 'scan';
+  const timeOutMethod = record.time_out_method || record.timeOutMethod || null;
+  return {
+    id: record.id,
+    studentId: record.student_id || record.studentId,
+    studentName: record.student_name || record.studentName,
+    eventId: record.event_id || record.eventId,
+    event: record.event_name || record.event,
+    location: record.location || '',
+    recordedAt: timeInAt,
+    timeInAt,
+    timeOutAt,
+    date: record.attendance_date || record.date || timeInAt?.slice(0, 10),
+    time: record.attendance_time || record.time || localTime(timeInAt),
+    timeIn: record.attendance_time || record.timeIn || record.time || localTime(timeInAt),
+    timeOut: record.timeOut || localTime(timeOutAt),
+    status: 'PRESENT',
+    method: timeInMethod,
+    timeInMethod,
+    timeOutMethod,
+  };
+}
+
 export async function downloadStudentAttendance(user, token, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'student') throw new Error('Log in as a student to refresh attendance.');
   if (!token) throw new Error('Sign in online as a student to refresh attendance.');
   const result = await postJson(apiUrl, '/student/attendance', {}, fetchImpl, token);
   if (!Array.isArray(result.records)) throw new Error('Server returned an invalid attendance history.');
-  return result.records;
+  return result.records.map(mapAttendanceRecord);
 }
 
 export async function downloadOrganizerAttendance(user, token, apiUrl, fetchImpl = fetch) {
@@ -101,24 +134,7 @@ export async function downloadOrganizerAttendance(user, token, apiUrl, fetchImpl
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw requestError(result.error || 'Could not download organizer attendance.', response.status, response.status >= 500);
   if (!Array.isArray(result.records)) throw new Error('Server returned an invalid attendance history.');
-  return result.records.map(record => {
-    const recordedAt = record.recorded_at || record.recordedAt;
-    return {
-      id: record.id,
-      studentId: record.student_id || record.studentId,
-      studentName: record.student_name || record.studentName,
-      eventId: record.event_id || record.eventId,
-      event: record.event_name || record.event,
-      location: record.location || '',
-      recordedAt,
-      date: record.attendance_date || record.date || recordedAt?.slice(0, 10),
-      time: record.attendance_time || record.time || (recordedAt
-        ? new Date(recordedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
-        : ''),
-      status: 'PRESENT',
-      method: record.method || 'scan',
-    };
-  });
+  return result.records.map(mapAttendanceRecord);
 }
 
 export async function syncToServer(data, user, token, apiUrl, fetchImpl = fetch) {

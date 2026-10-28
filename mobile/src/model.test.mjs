@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeOrganizerAttendance, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
+import { attendanceStatus, cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeOrganizerAttendance, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -53,6 +53,19 @@ test('organizer bootstrap refreshes assigned data without replacing local passwo
   assert.equal(data.records[0].id, 'pending');
 });
 
+test('organizer bootstrap includes server attendance so Time Out can be scanned on this device', () => {
+  let data = { ...ready(), events: [], records: [] };
+  data = mergeOrganizerBootstrap(data, {
+    students: [{ id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C' }],
+    events: [{ id: 'e1', name: 'Assembly', location: 'Hall', date: '2026-10-17', time: '09:00', attendees: [] }],
+    attendance: [{ id: 'r1', studentId: '00123', studentName: 'Juan Dela Cruz', eventId: 'e1', event: 'Assembly',
+      location: 'Hall', recordedAt: '2026-10-17T01:00:00.000Z', timeInAt: '2026-10-17T01:00:00.000Z',
+      timeIn: '09:00 AM', timeInMethod: 'scan', timeOutAt: null, timeOut: '', timeOutMethod: null }],
+  });
+  assert.equal(attendanceStatus(data, 'e1', '00123').status, 'timed-in');
+  assert.equal(data.records[0].synced, true);
+});
+
 test('student attendance refresh merges only that student\'s records and preserves local history', () => {
   const data = cacheRemoteStudent(ready(), { id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C', role: 'student' }, 'BSCS-3C');
   data.records = [{ id: 'local', studentId: '00123', eventId: 'e0', recordedAt: '2026-09-25T10:00:00.000Z', synced: false }];
@@ -75,7 +88,8 @@ test('organizer attendance refresh merges server records and preserves pending s
   assert.deepEqual(next.records.map(record => record.id), ['server', 'pending']);
   assert.equal(next.records[0].synced, true);
   assert.equal(next.records[1].synced, false);
-  assert.deepEqual(next.events[0].attendees, [{ id: '00456', name: 'Miko Test', time: '11:00', method: 'scan' }]);
+  assert.deepEqual(next.events[0].attendees, [{ id: '00456', name: 'Miko Test', time: '11:00', method: 'scan',
+    timeInAt: '2026-10-17T03:00:00.000Z', timeOutAt: null, timeOut: '', timeOutMethod: null }]);
   assert.throws(() => mergeOrganizerAttendance(data, [{ id: 'broken' }]), /invalid attendance record/i);
 });
 
@@ -177,7 +191,7 @@ test('old accounts migrate without losing events or receipts; admin wins duplica
   assert.throws(() => migrateData({ ...old, version: 99 }), /cannot be opened/);
 });
 
-test('attendance still validates event dates and prevents duplicate organizer/scanned entries', () => {
+test('attendance supports one Time In and one Time Out per event without duplicate scans', () => {
   const base = ready();
   assert.throws(() => createEvent(base, admin, { ...event, date: '2026-02-30' }, 'e'), /valid date/);
   assert.throws(() => createEvent(base, admin, { ...event, time: '25:00' }, 'e'), /valid time/);
@@ -185,7 +199,17 @@ test('attendance still validates event dates and prevents duplicate organizer/sc
   data = checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'record');
   assert.equal(data.records[0].studentId, '00123');
   assert.equal(data.events[0].attendees.length, 0);
-  assert.throws(() => checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'duplicate'), /already present/);
+  assert.throws(() => checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'duplicate'), /already timed in/);
+  data.students.push({ id: '00456', name: 'Miko Test', section: 'BSCS-3C' });
+  assert.throws(() => checkIn(data, admin, 'second', { id: '00456', name: 'Miko Test' }, 'scan', 'early-out', 'time-out'), /no Time In/);
+  const timeInAt = data.records[0].timeInAt;
+  data = checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'record', 'time-out', new Date('2026-10-26T18:00:00.000Z'));
+  assert.equal(data.records[0].id, 'record');
+  assert.equal(data.records[0].timeInAt, timeInAt);
+  assert.equal(data.records[0].timeOutAt, '2026-10-26T18:00:00.000Z');
+  assert.equal(data.records[0].synced, false);
+  assert.throws(() => checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'duplicate-out', 'time-out'), /already timed out/);
+  assert.throws(() => checkIn(data, admin, 'second', { id: '00123', name: 'Juan Dela Cruz' }, 'scan', 'duplicate-in'), /already timed in/);
   data = checkIn(data, admin, 'first', { id: 'ignored', name: 'Ignored' }, 'organizer', 'organizer-record');
   assert.equal(data.records[0].studentId, admin.id);
   assert.throws(() => checkIn(data, { ...admin, role: 'student' }, 'second', admin, 'scan', 'bad'), /Log in/);

@@ -9,7 +9,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.edgesync.norwescan"
+      "bundleIdentifier": "com.edgesync.norwescan",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.edgesync.norwescan",
