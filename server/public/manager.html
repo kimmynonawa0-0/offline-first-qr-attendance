@@ -23,9 +23,20 @@
       <p>Only the system-manager account can sign in here. Organizer credentials are not accepted.</p>
       <form id="login-form"><label for="login-id">Student ID</label><input id="login-id" autocomplete="username" required>
         <label for="login-password">Password</label><div class="password-field"><input id="login-password" type="password" autocomplete="current-password" required><button class="password-toggle" type="button" data-password-toggle="login-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
-        <div class="toolbar"><button id="login-button">Sign in</button></div><div id="login-message" class="status" role="status"></div>
+        <div class="toolbar"><button id="login-button">Sign in</button><button id="forgot-password" class="secondary" type="button">Forgot password?</button></div><div id="login-message" class="status" role="status"></div>
       </form>
       <p class="tag">This console is restricted to the system manager. Organizers use the NORWEScan app.</p>
+    </section>
+    <section id="recovery-panel" class="panel login hidden">
+      <p class="tag">ACCOUNT RECOVERY</p><h1>Reset manager password.</h1>
+      <p>Use the one-time recovery code you saved while signed in. The code is consumed after a successful reset.</p>
+      <form id="recovery-form">
+        <label for="recovery-id">Manager ID</label><input id="recovery-id" autocomplete="username" required>
+        <label for="recovery-code">Recovery code</label><input id="recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <label for="recovery-new-password">New password, at least 12 characters</label><div class="password-field"><input id="recovery-new-password" type="password" autocomplete="new-password" minlength="12" required><button class="password-toggle" type="button" data-password-toggle="recovery-new-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+        <label for="recovery-confirm-password">Confirm new password</label><div class="password-field"><input id="recovery-confirm-password" type="password" autocomplete="new-password" minlength="12" required><button class="password-toggle" type="button" data-password-toggle="recovery-confirm-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+        <div class="toolbar"><button id="recovery-button">Reset password</button><button id="recovery-cancel" class="secondary" type="button">Back to sign in</button></div><div id="recovery-message" class="status" role="status"></div>
+      </form>
     </section>
     <section id="password-panel" class="panel login hidden">
       <p class="tag">FIRST SIGN IN</p><h1>Set a private password.</h1><p>Your system manager account is still using its temporary password.</p>
@@ -40,7 +51,7 @@
         <button class="secondary" data-page="overview">Overview</button><button class="secondary" data-page="roster">Roster</button>
         <button class="secondary" data-page="students">Students</button>
         <button class="secondary" data-page="organizers">Organizers</button><button class="secondary" data-page="events">Events</button>
-        <button class="secondary" data-page="attendance">Attendance</button><button id="logout" class="danger">Log out</button>
+        <button class="secondary" data-page="attendance">Attendance</button><button class="secondary" data-page="account">Account</button><button id="logout" class="danger">Log out</button>
       </nav>
       <div id="message" class="status" role="status"></div>
       <section id="page-overview" class="page panel"></section>
@@ -82,6 +93,18 @@
         <div id="event-list"></div>
       </section>
       <section id="page-attendance" class="page panel hidden"><h1>Attendance records</h1><div id="attendance-list"></div></section>
+      <section id="page-account" class="page panel hidden">
+        <h1>Manager account security</h1>
+        <h2>Change password</h2><p>Confirm your current password and choose a new password with at least 12 characters.</p>
+        <form id="change-password-form"><label for="account-current-password">Current password</label><input id="account-current-password" type="password" autocomplete="current-password" required>
+          <label for="account-new-password">New password</label><input id="account-new-password" type="password" autocomplete="new-password" minlength="12" required>
+          <label for="account-confirm-password">Confirm new password</label><input id="account-confirm-password" type="password" autocomplete="new-password" minlength="12" required>
+          <div class="toolbar"><button id="change-password-button">Change password</button></div><div id="account-password-message" class="status" role="status"></div>
+        </form>
+        <h2>Recovery code</h2><p>Create a one-time code and store it somewhere private and offline. Creating a new code replaces the old one. It is shown only once.</p>
+        <div class="toolbar"><button id="create-recovery-code" class="secondary">Create recovery code</button></div>
+        <div id="recovery-code-message" class="status" role="status"></div>
+      </section>
     </section>
   </main>
   <script>
@@ -121,6 +144,25 @@
       } catch (error) { $('#login-message').textContent = error.message; $('#login-message').classList.add('error'); }
       finally { $('#login-button').disabled = false; $('#login-password').value = ''; }
     }
+    $('#forgot-password').addEventListener('click',()=>{
+      $('#login-panel').classList.add('hidden'); $('#recovery-panel').classList.remove('hidden');
+      $('#recovery-id').value=$('#login-id').value.trim(); $('#recovery-message').textContent='';
+    });
+    $('#recovery-cancel').addEventListener('click',()=>{
+      $('#recovery-panel').classList.add('hidden'); $('#login-panel').classList.remove('hidden');
+    });
+    $('#recovery-form').addEventListener('submit',async event=>{
+      event.preventDefault(); $('#recovery-button').disabled=true;
+      const newPassword=$('#recovery-new-password').value;
+      try{
+        if(newPassword!==$('#recovery-confirm-password').value)throw new Error('Passwords do not match.');
+        await api('/auth/admin/password-reset',{method:'POST',body:JSON.stringify({id:$('#recovery-id').value.trim(),recoveryCode:$('#recovery-code').value,newPassword})});
+        $('#login-message').classList.remove('error'); $('#login-message').textContent='Password reset. Sign in with your new password.';
+        $('#login-id').value=$('#recovery-id').value.trim(); $('#login-password').value='';
+        $('#recovery-panel').classList.add('hidden'); $('#login-panel').classList.remove('hidden');
+      }catch(error){$('#recovery-message').textContent=error.message;$('#recovery-message').classList.add('error');}
+      finally{$('#recovery-button').disabled=false;$('#recovery-code').value='';$('#recovery-new-password').value='';$('#recovery-confirm-password').value='';}
+    });
     $('#password-form').addEventListener('submit',async event=>{
       event.preventDefault(); const currentPassword=$('#current-password').value, newPassword=$('#new-password').value;
       $('#password-button').disabled=true;
@@ -131,6 +173,26 @@
         state.token=result.sessionToken;state.account.mustChangePassword=false;sessionStorage.setItem('manager-token',state.token);await enter();
       }catch(error){$('#password-message').textContent=error.message;$('#password-message').classList.add('error');}
       finally{$('#password-button').disabled=false;$('#current-password').value='';$('#new-password').value='';$('#confirm-password').value='';}
+    });
+    $('#change-password-form').addEventListener('submit',async event=>{
+      event.preventDefault(); $('#change-password-button').disabled=true;
+      const currentPassword=$('#account-current-password').value, newPassword=$('#account-new-password').value;
+      try{
+        if(newPassword!==$('#account-confirm-password').value)throw new Error('Passwords do not match.');
+        const result=await api('/auth/admin/password',{method:'POST',body:JSON.stringify({currentPassword,newPassword})});
+        state.token=result.sessionToken; state.account.mustChangePassword=false; sessionStorage.setItem('manager-token',state.token);
+        $('#account-password-message').classList.remove('error'); $('#account-password-message').textContent='Password changed successfully.';
+      }catch(error){$('#account-password-message').textContent=error.message;$('#account-password-message').classList.add('error');}
+      finally{$('#change-password-button').disabled=false;$('#account-current-password').value='';$('#account-new-password').value='';$('#account-confirm-password').value='';}
+    });
+    $('#create-recovery-code').addEventListener('click',async()=>{
+      const button=$('#create-recovery-code'); button.disabled=true;
+      try{
+        const result=await api('/auth/admin/recovery-code',{method:'POST',body:'{}'});
+        $('#recovery-code-message').classList.remove('error');
+        $('#recovery-code-message').textContent=`Save this code now; it will not be shown again: ${result.recoveryCode}`;
+      }catch(error){$('#recovery-code-message').textContent=error.message;$('#recovery-code-message').classList.add('error');}
+      finally{button.disabled=false;}
     });
     async function enter() {
       try {
