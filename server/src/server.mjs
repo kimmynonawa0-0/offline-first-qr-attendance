@@ -8,6 +8,7 @@ import { parseRosterFile } from './roster-file.mjs';
 import { validateManagedStudent } from './management-students.mjs';
 import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, rosterScopeError } from './auth.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
+import { createManagerRecoveryCode, hashManagerRecoveryCode, managerRecoveryCodeMatches } from './manager-recovery.mjs';
 
 const { DATABASE_URL, ADMIN_ID, ADMIN_PASSWORD, MANAGER_ID, MANAGER_PASSWORD, PORT = '3000' } = process.env;
 if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12
@@ -56,6 +57,11 @@ CREATE TABLE IF NOT EXISTS attendance (
   UNIQUE (event_id, student_id)
 );`);
 await pool.query(`ALTER TABLE organizers ADD COLUMN IF NOT EXISTS access_level TEXT NOT NULL DEFAULT 'organizer';
+await pool.query(`CREATE TABLE IF NOT EXISTS manager_recovery_codes (
+  manager_id TEXT PRIMARY KEY REFERENCES organizers(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);`);
   ALTER TABLE organizers ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
   ALTER TABLE organizers ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT 'Organizer';
   ALTER TABLE organizers ADD COLUMN IF NOT EXISTS section TEXT NOT NULL DEFAULT '';
@@ -280,6 +286,44 @@ const server = http.createServer(async (request, response) => {
       return send(200, { ok: true });
     }
     if (request.method === 'POST' && request.url === '/student/attendance') {
+    if (request.method === 'POST' && request.url === '/auth/admin/recovery-code') {
+      const account = await organizerForRequest(request);
+      if (!isManager(account) || account.id !== MANAGER_ID) return send(403, { error: 'Only the signed-in system manager can create a recovery code.' });
+      const recoveryCode = createManagerRecoveryCode();
+      await pool.query(`INSERT INTO manager_recovery_codes (manager_id, code_hash)
+        VALUES ($1, $2) ON CONFLICT (manager_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, created_at = NOW()`,
+      [MANAGER_ID, hashManagerRecoveryCode(recoveryCode)]);
+      return send(200, { recoveryCode });
+    }
+    if (request.method === 'POST' && request.url === '/auth/admin/password-reset') {
+      if (typeof body.id !== 'string' || typeof body.recoveryCode !== 'string' || typeof body.newPassword !== 'string') {
+        return send(400, { error: 'Manager ID, recovery code, and new password are required.' });
+      }
+      if (body.id.trim() !== MANAGER_ID) return send(401, { error: 'The manager ID or recovery code is invalid.' });
+      if (body.newPassword.trim().length < 12) return send(400, { error: 'Use at least 12 characters for your new password.' });
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const stored = await client.query('SELECT code_hash FROM manager_recovery_codes WHERE manager_id = $1 FOR UPDATE', [MANAGER_ID]);
+        if (!stored.rows[0] || !managerRecoveryCodeMatches(body.recoveryCode, stored.rows[0].code_hash)) {
+          await client.query('ROLLBACK');
+          return send(401, { error: 'The manager ID or recovery code is invalid.' });
+        }
+        const salt = randomBytes(16).toString('hex');
+        const hash = await passwordHashAsync(body.newPassword, salt);
+        await client.query(`UPDATE organizers SET salt = $2, password_hash = $3,
+          credential_initialized = TRUE, must_change_password = FALSE WHERE id = $1 AND access_level = 'manager'`,
+        [MANAGER_ID, salt, hash]);
+        await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [MANAGER_ID]);
+        await client.query('DELETE FROM manager_recovery_codes WHERE manager_id = $1', [MANAGER_ID]);
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally { client.release(); }
+      return send(200, { ok: true });
+    }
       const student = await studentForRequest(request);
       if (!student) return send(401, { error: 'Your student session expired or was revoked. Log in again.' });
       const result = await pool.query(`SELECT id, student_id, student_name, event_id, event_name, location,

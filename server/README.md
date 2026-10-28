@@ -45,6 +45,14 @@ app to view and import their own section roster, scan assigned events, and revie
 check-ins; they cannot use the system-manager console. Manager APIs enforce this
 role boundary even if an organizer opens `/manager` directly.
 
+System managers can change their password from **Account** while signed in. On
+that page, choose **Create recovery code** and store the one-time code in a
+private offline location. It is displayed only once; creating another code
+replaces the previous one. If locked out, choose **Forgot password?** on
+`/manager` and use the manager ID and saved code to reset the password. A
+successful reset consumes the code and revokes existing manager sessions. If
+the code is lost, sign in and create a new one; there is no email recovery.
+
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
 For testing across different networks, deploy this API behind HTTPS and point it
