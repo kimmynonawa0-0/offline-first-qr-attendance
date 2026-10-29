@@ -312,7 +312,10 @@ export default function AppScreen() {
     <History events={assignedEvents} onManage={id => go('event', { eventId: id })} />
   </>;
   else if (screen === 'event' && event) content = <>
-    <Card admin><EventSummary event={event} /><Button purple onPress={() => go('scanner', { eventId })}>Scan for this event</Button></Card>
+    <Card admin><EventSummary event={event} />
+      <Button purple onPress={() => go('scanner', { eventId, scanMode: 'time-in' })}>Scan Time In</Button>
+      <Button secondary onPress={() => go('scanner', { eventId, scanMode: 'time-out' })}>Scan Time Out</Button>
+    </Card>
     <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
       <Muted>Time In: {ownAttendance?.time || displayTime(ownAttendance?.timeInAt)}</Muted>
       <Muted>Time Out: {ownAttendance?.timeOut || displayTime(ownAttendance?.timeOutAt)}</Muted>
