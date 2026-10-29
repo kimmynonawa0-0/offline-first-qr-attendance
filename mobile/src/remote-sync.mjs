@@ -154,12 +154,14 @@ export async function syncToServer(data, user, token, apiUrl, fetchImpl = fetch)
   const pending = data.records.filter(record => !record.synced);
   const pendingEventIds = new Set(pending.map(record => record.eventId));
   const pendingStudentIds = new Set(pending.map(record => record.studentId));
+  const pendingEvents = data.events.filter(event => pendingEventIds.has(event.id));
   const result = await postJson(apiUrl, '/sync', {
       students: data.students.filter(student => pendingStudentIds.has(student.id)).map(({ id, name, section, email }) => ({ id, name, section, email })),
-      events: data.events.filter(event => pendingEventIds.has(event.id)).map(({ attendees, ...event }) => event),
+      events: pendingEvents.map(({ attendees, ...event }) => event),
       records: pending,
     }, fetchImpl, token);
-  if (!Array.isArray(result.acceptedRecordIds) || !Array.isArray(result.conflictRecordIds)) {
+  if (!Array.isArray(result.acceptedRecordIds) || !Array.isArray(result.conflictRecordIds)
+    || !Array.isArray(result.acceptedEventIds)) {
     throw new Error('Server did not confirm which records it saved.');
   }
   return result;
@@ -178,7 +180,14 @@ export async function syncOrganizerWithReauth(data, user, token, apiUrl, fetchIm
   }
 }
 
-export function markSynced(data, acceptedRecordIds) {
+export function markSynced(data, acceptedRecordIds, acceptedEventIds = []) {
   const accepted = new Set(acceptedRecordIds);
-  return { ...data, records: data.records.map(record => accepted.has(record.id) ? { ...record, synced: true } : record) };
+  const acceptedEvents = new Set(acceptedEventIds);
+  return {
+    ...data,
+    events: data.events.map(event => acceptedEvents.has(event.id)
+      ? { ...event, createdLocally: false, assignedToOrganizer: true }
+      : event),
+    records: data.records.map(record => accepted.has(record.id) ? { ...record, synced: true } : record),
+  };
 }

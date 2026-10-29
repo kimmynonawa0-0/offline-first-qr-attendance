@@ -34,6 +34,7 @@ export function validateBatch(body) {
   }
   for (const event of body.events) {
     if (!event || !['id', 'name', 'location', 'date', 'time'].every(key => typeof event[key] === 'string' && event[key].trim())) throw new Error('Invalid event.');
+    if (event.createdLocally !== undefined && typeof event.createdLocally !== 'boolean') throw new Error('Invalid event sync status.');
   }
   for (const record of body.records) {
     if (!record || !['id', 'studentId', 'studentName', 'eventId', 'recordedAt'].every(key => typeof record[key] === 'string' && record[key].trim())) throw new Error('Invalid attendance record.');
@@ -48,9 +49,10 @@ export function validateBatch(body) {
   }
 }
 
-export async function saveBatch(client, body) {
+export async function saveBatch(client, body, organizerId) {
   const acceptedRecordIds = [];
   const conflictRecordIds = [];
+  const acceptedEventIds = [];
   await client.query('BEGIN');
   try {
     for (const person of body.students) {
@@ -58,8 +60,20 @@ export async function saveBatch(client, body) {
         [person.id, person.name, person.section, person.email || '']);
     }
     for (const event of body.events) {
-      await client.query('INSERT INTO events (id, name, location, date, time) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING',
-        [event.id, event.name, event.location, event.date, event.time]);
+      if (event.createdLocally) {
+        const inserted = await client.query('INSERT INTO events (id, name, location, date, time) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING RETURNING id',
+          [event.id, event.name, event.location, event.date, event.time]);
+        if (inserted.rows[0]?.id) {
+          await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [event.id, organizerId]);
+        } else {
+          const assigned = await client.query('SELECT event_id FROM event_organizers WHERE event_id = $1 AND organizer_id = $2', [event.id, organizerId]);
+          if (!assigned.rows.length) throw new Error('A locally created event ID is already in use.');
+        }
+        acceptedEventIds.push(event.id);
+      } else {
+        await client.query('INSERT INTO events (id, name, location, date, time) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING',
+          [event.id, event.name, event.location, event.date, event.time]);
+      }
     }
     for (const record of body.records) {
       const timeInAt = record.timeInAt || record.recordedAt;
@@ -81,7 +95,7 @@ export async function saveBatch(client, body) {
       else conflictRecordIds.push(record.id);
     }
     await client.query('COMMIT');
-    return { acceptedRecordIds, conflictRecordIds };
+    return { acceptedRecordIds, conflictRecordIds, acceptedEventIds };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

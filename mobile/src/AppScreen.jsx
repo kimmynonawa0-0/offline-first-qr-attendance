@@ -71,7 +71,9 @@ function Metrics({ items }) {
 }
 
 function EventSummary({ event }) {
-  return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {event.time}</Muted></>;
+  return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {event.time}</Muted>
+    {event.createdLocally && <Muted>LOCAL ONLY / Students have not been notified. This event uploads with attendance.</Muted>}
+  </>;
 }
 
 function displayTime(value, fallback = 'Not recorded') {
@@ -370,21 +372,35 @@ export default function AppScreen() {
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)}><EventSummary event={currentEvent} /></ModalFrame>}
     {createEventOpen && <ModalFrame title="Create event" onClose={() => setCreateEventOpen(false)} busy={busy}>
-      <Muted>Create an event for your organizer account. You must be online to publish it.</Muted>
+      <Muted>Create an event for your organizer account. If you are offline, it stays on this device and students will not see a notification. Share the event in your group chat; it will upload with scanned attendance when you have internet.</Muted>
       <Field label="Event name" value={eventDraft.name} onChangeText={name => setEventDraft(current => ({ ...current, name }))} placeholder="e.g. Department assembly" />
       <Field label="Location" value={eventDraft.location} onChangeText={location => setEventDraft(current => ({ ...current, location }))} placeholder="e.g. Main hall" />
       <Field label="Date (YYYY-MM-DD)" value={eventDraft.date} onChangeText={date => setEventDraft(current => ({ ...current, date }))} />
       <Field label="Time (24-hour HH:MM)" value={eventDraft.time} onChangeText={time => setEventDraft(current => ({ ...current, time }))} />
-      <Button disabled={busy || !online} onPress={() => run(async () => {
+      <Button disabled={busy} onPress={() => run(async () => {
         const id = Crypto.randomUUID();
         const localEvent = createEvent(data, user, eventDraft, id).events.at(-1);
-        await withServerSession(token => createOrganizerEvent(localEvent, user, token, process.env.EXPO_PUBLIC_API_URL));
-        await update(current => ({ ...current, events: [...current.events, { ...localEvent, assignedToOrganizer: true }] }));
-      }, () => {
+        let createdLocally = false;
+        if (!online) createdLocally = true;
+        else {
+          try {
+            await withServerSession(token => createOrganizerEvent(localEvent, user, token, process.env.EXPO_PUBLIC_API_URL));
+          } catch (error) {
+            if (!error.retryable) throw error;
+            createdLocally = true;
+          }
+        }
+        await update(current => ({ ...current, events: [...current.events, {
+          ...localEvent, assignedToOrganizer: true, ...(createdLocally ? { createdLocally: true } : {}),
+        }] }));
+        return { createdLocally };
+      }, result => {
         setCreateEventOpen(false);
         setEventDraft({ name: '', location: '', date: localDate(), time: new Date().toTimeString().slice(0, 5) });
-        setNotice('Event created and published.');
-      })}>{busy ? 'Creating...' : 'Create event'}</Button>
+        setNotice(result.createdLocally
+          ? 'Event saved on this device only. Students will not be notified; share it in your group chat. It will upload with attendance.'
+          : 'Event created and published.');
+      })}>{busy ? 'Saving...' : 'Create event'}</Button>
       <Button secondary disabled={busy} onPress={() => setCreateEventOpen(false)}>Cancel</Button>
     </ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
@@ -393,11 +409,11 @@ export default function AppScreen() {
       <ErrorText>{error}</ErrorText>
       <Button disabled={busy} onPress={() => run(async () => {
         const result = await withServerSession(token => syncOrganizerWithReauth(data, user, token, process.env.EXPO_PUBLIC_API_URL));
-        await update(current => markSynced(current, result.acceptedRecordIds));
+        await update(current => markSynced(current, result.acceptedRecordIds, result.acceptedEventIds));
         return result;
       }, result => {
         setSyncOpen(false);
-        setNotice(`Upload complete. ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
+        setNotice(`Upload complete. ${result.acceptedEventIds.length} created event(s) and ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
       })}>{busy ? 'Uploading...' : 'Upload'}</Button>
     </ModalFrame>}
   </SafeAreaView>;

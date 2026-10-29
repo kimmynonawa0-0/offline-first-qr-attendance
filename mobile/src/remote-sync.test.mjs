@@ -23,7 +23,7 @@ test('remote sync sends only pending receipts and confirms only accepted IDs', a
   const fetchImpl = async (_, options) => {
     sent = JSON.parse(options.body);
     assert.equal(options.headers.Authorization, 'Bearer opaque-session-token');
-    return { ok: true, json: async () => ({ acceptedRecordIds: ['r1'], conflictRecordIds: [] }) };
+    return { ok: true, json: async () => ({ acceptedRecordIds: ['r1'], conflictRecordIds: [], acceptedEventIds: [] }) };
   };
   const result = await syncToServer(data, { id: '23-02330', role: 'admin' }, 'opaque-session-token', 'http://localhost:3000/', fetchImpl);
   assert.deepEqual(sent.records.map(r => r.id), ['r1']);
@@ -33,7 +33,7 @@ test('remote sync sends only pending receipts and confirms only accepted IDs', a
   assert.equal(sent.password, undefined);
   assert.equal(sent.adminId, undefined);
   assert.equal(sent.events[0].attendees, undefined);
-  assert.deepEqual(markSynced(data, result.acceptedRecordIds).records.map(r => r.synced), [true, true]);
+  assert.deepEqual(markSynced(data, result.acceptedRecordIds, result.acceptedEventIds).records.map(r => r.synced), [true, true]);
   assert.equal(data.records[0].synced, false);
 });
 
@@ -106,18 +106,23 @@ test('only network failures, timeouts, and server errors are eligible for offlin
 });
 
 test('organizer upload uses the existing session without signing in again', async () => {
-  const data = { students: [{ id: '1', name: 'A', section: 'S' }], events: [{ id: 'e', name: 'Event' }],
+  const data = { students: [{ id: '1', name: 'A', section: 'S' }], events: [{ id: 'e', name: 'Event', createdLocally: true }],
     records: [{ id: 'pending', studentId: '1', eventId: 'e', synced: false }] };
   const calls = [];
   const result = await syncOrganizerWithReauth(data, { id: 'org', role: 'admin' }, 'existing-token', 'https://api.test', async (url, options) => {
     calls.push(url);
     assert.equal(options.headers.Authorization, 'Bearer existing-token');
-    assert.deepEqual(JSON.parse(options.body).records.map(record => record.id), ['pending']);
-    return { ok: true, json: async () => ({ acceptedRecordIds: ['pending'], conflictRecordIds: [] }) };
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.records.map(record => record.id), ['pending']);
+    assert.equal(body.events[0].createdLocally, true);
+    return { ok: true, json: async () => ({ acceptedRecordIds: ['pending'], conflictRecordIds: [], acceptedEventIds: ['e'] }) };
   });
   assert.deepEqual(calls, ['https://api.test/sync']);
   assert.equal(result.acceptedRecordIds[0], 'pending');
   assert.equal(data.records[0].synced, false);
+  const synced = markSynced(data, result.acceptedRecordIds, result.acceptedEventIds);
+  assert.equal(synced.events[0].createdLocally, false);
+  assert.equal(synced.events[0].assignedToOrganizer, true);
 });
 
 test('expired organizer session is reported without discarding pending records', async () => {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { passwordHash, passwordMatches, validateBatch } from './sync.mjs';
+import { passwordHash, passwordMatches, saveBatch, validateBatch } from './sync.mjs';
 import { provisionRoster, validateRoster } from './roster.mjs';
 
 test('organizer password verifier accepts the correct password only', () => {
@@ -22,6 +22,28 @@ test('sync rejects malformed attendance batches before database writes', () => {
   assert.throws(() => validateBatch({ ...batch, records: [{ ...paired.records[0], recordedAt: 'bad', timeInAt: null }] }), /Invalid Time In/);
   assert.throws(() => validateBatch({ ...batch, records: [{ ...paired.records[0], timeOutAt: 'bad' }] }), /Invalid Time Out/);
   assert.throws(() => validateBatch({ ...batch, records: [{ ...paired.records[0], timeInMethod: 'forged' }] }), /Invalid attendance method/);
+});
+
+test('sync accepts a flagged local event but rejects malformed local event status', () => {
+  const batch = { students: [], events: [{ id: 'e', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', createdLocally: true }], records: [] };
+  assert.doesNotThrow(() => validateBatch(batch));
+  assert.throws(() => validateBatch({ ...batch, events: [{ ...batch.events[0], createdLocally: 'yes' }] }), /sync status/);
+});
+
+test('sync registers a new local event to its organizer in the same transaction', async () => {
+  const calls = [];
+  const client = { async query(sql, args = []) {
+    calls.push({ sql, args });
+    if (sql.startsWith('INSERT INTO events')) return { rows: [{ id: args[0] }] };
+    return { rows: [] };
+  } };
+  const result = await saveBatch(client, { students: [], events: [
+    { id: 'local-event', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', createdLocally: true },
+  ], records: [] }, 'organizer-1');
+  assert.deepEqual(result, { acceptedRecordIds: [], conflictRecordIds: [], acceptedEventIds: ['local-event'] });
+  assert.ok(calls.findIndex(call => call.sql.startsWith('INSERT INTO events')) < calls.findIndex(call => call.sql.startsWith('INSERT INTO event_organizers')));
+  assert.deepEqual(calls.find(call => call.sql.startsWith('INSERT INTO event_organizers')).args, ['local-event', 'organizer-1']);
+  assert.equal(calls.at(-1).sql, 'COMMIT');
 });
 
 test('roster validation rejects duplicate IDs and malformed rows', () => {

@@ -37,7 +37,8 @@ test('remote student login caches a sanitized student account without changing o
 test('organizer bootstrap refreshes assigned data without replacing local passwords or attendance', () => {
   let data = importRoster(ready(), admin, rows);
   data.students[0].password = 'student private password';
-  data.events = [{ id: 'old', name: 'Old', attendees: [], assignedToOrganizer: true }];
+  data.events = [{ id: 'old', name: 'Old', attendees: [], assignedToOrganizer: true },
+    { id: 'local', name: 'Quick event', attendees: [], createdLocally: true, assignedToOrganizer: true }];
   data.records = [{ id: 'pending', studentId: '00123', eventId: 'old', synced: false }];
   data = mergeOrganizerBootstrap(data, {
     students: [{ id: '00123', name: 'Juan Updated', section: 'BSCS-3C' }],
@@ -45,6 +46,7 @@ test('organizer bootstrap refreshes assigned data without replacing local passwo
   });
   assert.equal(data.students[0].password, 'student private password');
   assert.equal(data.events.find(item => item.id === 'old').assignedToOrganizer, false);
+  assert.equal(data.events.find(item => item.id === 'local').assignedToOrganizer, true);
   assert.equal(data.events.find(item => item.id === 'assigned').assignedToOrganizer, true);
   assert.equal(data.records[0].synced, false);
   data = cacheRemoteAdminPassword(data, '00123', 'student private password', { name: 'Juan Updated', mustChangePassword: false });

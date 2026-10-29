@@ -714,6 +714,9 @@ const server = http.createServer(async (request, response) => {
     if (organizer.access_level !== 'organizer') return send(403, { error: 'System manager accounts cannot scan or sync attendance.' });
     if (organizer.must_change_password) return send(403, { error: 'Change your temporary password before syncing attendance.' });
     validateBatch(body);
+    if (body.events.some(event => event.createdLocally && !validEvent(event))) {
+      return send(400, { error: 'Provide valid details for every locally created event.' });
+    }
     const eventIds = [...new Set([...body.events.map(event => event.id), ...body.records.map(record => record.eventId)])];
     const studentIds = [...new Set(body.records.map(record => record.studentId))];
     const events = eventIds.length ? await pool.query(isManager(organizer)
@@ -721,7 +724,15 @@ const server = http.createServer(async (request, response) => {
       : `SELECT e.id, e.name, e.location, e.date, e.time FROM events e
         JOIN event_organizers eo ON eo.event_id = e.id WHERE eo.organizer_id = $1 AND e.id = ANY($2::text[])`,
     isManager(organizer) ? [eventIds] : [organizer.id, eventIds]) : { rows: [] };
-    if (events.rows.length !== eventIds.length) {
+    const availableEventIds = new Set(events.rows.map(event => event.id));
+    const locallyCreated = body.events.filter(event => event.createdLocally === true);
+    const unseenLocalIds = locallyCreated.map(event => event.id).filter(id => !availableEventIds.has(id));
+    if (unseenLocalIds.length) {
+      const collisions = await pool.query('SELECT id FROM events WHERE id = ANY($1::text[])', [unseenLocalIds]);
+      if (collisions.rows.length) return send(403, { error: 'A locally created event ID is already in use. Records remain saved on the device.' });
+      for (const id of unseenLocalIds) availableEventIds.add(id);
+    }
+    if (eventIds.some(id => !availableEventIds.has(id))) {
       return send(403, { error: 'A synced event is missing or is not assigned to this organizer. Records remain saved on the device.' });
     }
     const students = studentIds.length
@@ -734,8 +745,14 @@ const server = http.createServer(async (request, response) => {
       return send(403, { error: 'A scanned student is outside this organizer section roster. Records remain saved on the device.' });
     }
     const eventById = new Map(events.rows.map(event => [event.id, event]));
+    for (const event of locallyCreated) if (!eventById.has(event.id)) eventById.set(event.id, event);
     const studentById = new Map(students.rows.map(student => [student.id, student]));
-    body.events = events.rows;
+    body.events = [
+      ...events.rows.map(event => locallyCreated.some(local => local.id === event.id)
+        ? { ...event, createdLocally: true }
+        : event),
+      ...locallyCreated.filter(event => !events.rows.some(existing => existing.id === event.id)),
+    ];
     body.students = students.rows;
     body.records = body.records.map(record => {
       const event = eventById.get(record.eventId);
@@ -743,7 +760,7 @@ const server = http.createServer(async (request, response) => {
       return { ...record, studentName: student.name, event: event.name, location: event.location };
     });
     const client = await pool.connect();
-    try { return send(200, await saveBatch(client, body)); }
+    try { return send(200, await saveBatch(client, body, organizer.id)); }
     finally { client.release(); }
   } catch (error) {
     if (error instanceof SyntaxError || /Invalid|Missing|too large|credentials|Import between|Duplicate|email|row|Choose a|File needs|Do not include|Roster file|Unclosed|Malformed|Unexpected text/i.test(error.message)) {

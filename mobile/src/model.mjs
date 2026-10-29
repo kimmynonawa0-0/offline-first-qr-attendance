@@ -65,7 +65,7 @@ export function cacheRemoteAdminPassword(data, adminId, password, serverAccount 
 
 export function mergeOrganizerBootstrap(data, bootstrap) {
   requireValue(Array.isArray(bootstrap?.students) && Array.isArray(bootstrap?.events), 'The server returned invalid organizer data.');
-  let next = { ...data, events: data.events.map(event => ({ ...event, assignedToOrganizer: false })) };
+  let next = { ...data, events: data.events.map(event => ({ ...event, assignedToOrganizer: Boolean(event.createdLocally) })) };
   for (const student of bootstrap.students) {
     requireValue(student?.id && student?.name && student?.section, 'The server returned an invalid student roster entry.');
     if (next.admins.some(account => account.id === student.id)) continue;
