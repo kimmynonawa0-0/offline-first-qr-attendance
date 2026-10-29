@@ -65,6 +65,14 @@ export async function downloadOrganizerBootstrap(token, apiUrl, fetchImpl = fetc
     : result;
 }
 
+export async function createOrganizerEvent(event, user, token, apiUrl, fetchImpl = fetch) {
+  if (user?.role !== 'admin') throw new Error('Log in as an organizer to create an event.');
+  if (!token) throw new Error('Sign in online as an organizer to create an event.');
+  const result = await postJson(apiUrl, '/organizer/events', { event, organizerIds: [user.id] }, fetchImpl, token);
+  if (!result.event?.id || result.event.id !== event.id) throw new Error('Server did not confirm the event creation.');
+  return result.event;
+}
+
 export async function changeStudentPasswordRemotely(user, token, currentPassword, newPassword, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'student' || !token) throw new Error('Sign in online as a student to change this password.');
   return postJson(apiUrl, '/auth/password', { id: user.id, currentPassword, newPassword }, fetchImpl, token);

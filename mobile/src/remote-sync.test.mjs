@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerAttendance, downloadOrganizerBootstrap, downloadStudentAttendance, isRetryableAuthFailure, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, createOrganizerEvent, downloadOrganizerAttendance, downloadOrganizerBootstrap, downloadStudentAttendance, isRetryableAuthFailure, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+
+test('organizer event creation posts an authenticated event and confirms it', async () => {
+  const event = { id: 'e1', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00' };
+  const result = await createOrganizerEvent(event, { id: 'org', role: 'admin' }, 'session', 'https://api.test', async (url, options) => {
+    assert.equal(url, 'https://api.test/organizer/events');
+    assert.equal(options.headers.Authorization, 'Bearer session');
+    assert.deepEqual(JSON.parse(options.body), { event, organizerIds: ['org'] });
+    return { ok: true, json: async () => ({ event }) };
+  });
+  assert.deepEqual(result, event);
+  await assert.rejects(createOrganizerEvent(event, { id: 'student', role: 'student' }, 'session', 'https://api.test'), /organizer/);
+});
 
 test('remote sync sends only pending receipts and confirms only accepted IDs', async () => {
   const data = { students: [{ id: '1', name: 'A', section: 'S', password: 'private' }],

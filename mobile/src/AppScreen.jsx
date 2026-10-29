@@ -12,8 +12,8 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { attendanceStatus, checkIn, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
-import { downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
+import { attendanceStatus, checkIn, createEvent, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { createOrganizerEvent, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
 import { serverRefreshScope } from './server-refresh.mjs';
 import PullToRefreshScrollView from './PullToRefreshScrollView';
@@ -151,6 +151,8 @@ export default function AppScreen() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
+  const [createEventOpen, setCreateEventOpen] = useState(false);
+  const [eventDraft, setEventDraft] = useState(() => ({ name: '', location: '', date: localDate(), time: new Date().toTimeString().slice(0, 5) }));
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   useEffect(() => {
@@ -302,7 +304,10 @@ export default function AppScreen() {
   else if (screen === 'admin-records') content = <>
     <RecordList records={data.records} />
   </>;
-  else if (screen === 'history') content = <History events={assignedEvents} onManage={id => go('event', { eventId: id })} />;
+  else if (screen === 'history') content = <>
+    <Button icon="add-outline" onPress={() => setCreateEventOpen(true)}>Create event</Button>
+    <History events={assignedEvents} onManage={id => go('event', { eventId: id })} />
+  </>;
   else if (screen === 'event' && event) content = <>
     <Card admin><EventSummary event={event} /><Button purple onPress={() => go('scanner', { eventId })}>Scan for this event</Button></Card>
     <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
@@ -364,6 +369,24 @@ export default function AppScreen() {
     </View>
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)}><EventSummary event={currentEvent} /></ModalFrame>}
+    {createEventOpen && <ModalFrame title="Create event" onClose={() => setCreateEventOpen(false)} busy={busy}>
+      <Muted>Create an event for your organizer account. You must be online to publish it.</Muted>
+      <Field label="Event name" value={eventDraft.name} onChangeText={name => setEventDraft(current => ({ ...current, name }))} placeholder="e.g. Department assembly" />
+      <Field label="Location" value={eventDraft.location} onChangeText={location => setEventDraft(current => ({ ...current, location }))} placeholder="e.g. Main hall" />
+      <Field label="Date (YYYY-MM-DD)" value={eventDraft.date} onChangeText={date => setEventDraft(current => ({ ...current, date }))} />
+      <Field label="Time (24-hour HH:MM)" value={eventDraft.time} onChangeText={time => setEventDraft(current => ({ ...current, time }))} />
+      <Button disabled={busy || !online} onPress={() => run(async () => {
+        const id = Crypto.randomUUID();
+        const localEvent = createEvent(data, user, eventDraft, id).events.at(-1);
+        await withServerSession(token => createOrganizerEvent(localEvent, user, token, process.env.EXPO_PUBLIC_API_URL));
+        await update(current => ({ ...current, events: [...current.events, { ...localEvent, assignedToOrganizer: true }] }));
+      }, () => {
+        setCreateEventOpen(false);
+        setEventDraft({ name: '', location: '', date: localDate(), time: new Date().toTimeString().slice(0, 5) });
+        setNotice('Event created and published.');
+      })}>{busy ? 'Creating...' : 'Create event'}</Button>
+      <Button secondary disabled={busy} onPress={() => setCreateEventOpen(false)}>Cancel</Button>
+    </ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
     {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
       <Muted>Your signed-in organizer session will authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.</Muted>
