@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -130,16 +130,38 @@ export function ScanCorners() {
   </View>;
 }
 
-export function ModalFrame({ title, onClose, children, busy = false }) {
+export function ModalFrame({ title, onClose, children, busy = false, dismissOnBackdrop = false, showClose = true }) {
+  const touchStartY = useRef(null);
+  const dismiss = () => { if (!busy) onClose(); };
   return <Modal visible transparent animationType="fade" onRequestClose={() => !busy && onClose()}>
     <SafeAreaView testID="app-modal" accessibilityViewIsModal style={styles.overlay}>
+      {dismissOnBackdrop && <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close dialog"
+        onPress={dismiss}
+        style={StyleSheet.absoluteFill}
+      />}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
         <View style={styles.modalCard}>
-          <View style={styles.modalGrip} />
+          <View
+            accessibilityRole={dismissOnBackdrop ? 'button' : undefined}
+            accessibilityLabel={dismissOnBackdrop ? 'Swipe down or tap to go back' : undefined}
+            onStartShouldSetResponder={dismissOnBackdrop ? () => true : undefined}
+            onMoveShouldSetResponder={dismissOnBackdrop ? (_, gesture) => Math.abs(gesture.dy) > 6 : undefined}
+            onResponderGrant={dismissOnBackdrop ? event => { touchStartY.current = event.nativeEvent.pageY; } : undefined}
+            onResponderRelease={dismissOnBackdrop ? event => {
+              const distance = event.nativeEvent.pageY - (touchStartY.current ?? event.nativeEvent.pageY);
+              touchStartY.current = null;
+              if (distance > 64) dismiss();
+            } : undefined}
+            style={styles.modalGripHitArea}
+          >
+            <View style={styles.modalGrip} />
+          </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
             <Title>{title}</Title>
             {children}
-            <LinkButton disabled={busy} onPress={onClose}>Close</LinkButton>
+            {showClose && <LinkButton disabled={busy} onPress={onClose}>Close</LinkButton>}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -202,6 +224,7 @@ export const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.86)', justifyContent: 'flex-end', padding: 12 },
   modalKeyboard: { width: '100%', maxWidth: 500, maxHeight: '92%', alignSelf: 'center', justifyContent: 'flex-end' },
   modalCard: { maxHeight: '100%', backgroundColor: colors.panelRaised, borderWidth: 1, borderColor: colors.line, borderRadius: 24, overflow: 'hidden' },
+  modalGripHitArea: { minHeight: 28, alignItems: 'center', justifyContent: 'center' },
   modalGrip: { width: 48, height: 4, borderRadius: 2, backgroundColor: '#606461', alignSelf: 'center', marginTop: 10 },
   modalContent: { padding: 22, gap: 10 },
   qr: { alignItems: 'center', padding: 20, backgroundColor: colors.paper, borderRadius: 15, gap: 12 },
