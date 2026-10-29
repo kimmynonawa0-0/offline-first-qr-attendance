@@ -1,4 +1,5 @@
 const testFiles = [
+  '../src/event-time.test.mjs',
   '../src/model.test.mjs',
   '../src/today-event.test.mjs',
   '../src/sqlite-storage.test.mjs',

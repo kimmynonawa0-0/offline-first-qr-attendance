@@ -3,6 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, Vie
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { eventForToday } from './today-event.mjs';
+import { currentTwelveHourTime, formatTwelveHourTime, parseTwelveHourTime } from './event-time.mjs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
@@ -71,7 +72,7 @@ function Metrics({ items }) {
 }
 
 function EventSummary({ event }) {
-  return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {event.time}</Muted>
+  return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {formatTwelveHourTime(event.time)}</Muted>
     {event.createdLocally && <Muted>LOCAL ONLY / Students have not been notified. This event uploads with attendance.</Muted>}
   </>;
 }
@@ -154,7 +155,7 @@ export default function AppScreen() {
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
   const [createEventOpen, setCreateEventOpen] = useState(false);
-  const [eventDraft, setEventDraft] = useState(() => ({ name: '', location: '', date: localDate(), time: new Date().toTimeString().slice(0, 5) }));
+  const [eventDraft, setEventDraft] = useState(() => ({ name: '', location: '', date: localDate(), time: currentTwelveHourTime() }));
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   useEffect(() => {
@@ -376,10 +377,10 @@ export default function AppScreen() {
       <Field label="Event name" value={eventDraft.name} onChangeText={name => setEventDraft(current => ({ ...current, name }))} placeholder="e.g. Department assembly" />
       <Field label="Location" value={eventDraft.location} onChangeText={location => setEventDraft(current => ({ ...current, location }))} placeholder="e.g. Main hall" />
       <Field label="Date (YYYY-MM-DD)" value={eventDraft.date} onChangeText={date => setEventDraft(current => ({ ...current, date }))} />
-      <Field label="Time (24-hour HH:MM)" value={eventDraft.time} onChangeText={time => setEventDraft(current => ({ ...current, time }))} />
+      <Field label="Event time (AM/PM)" value={eventDraft.time} onChangeText={time => setEventDraft(current => ({ ...current, time }))} placeholder="e.g. 2:30 PM" />
       <Button disabled={busy} onPress={() => run(async () => {
         const id = Crypto.randomUUID();
-        const localEvent = createEvent(data, user, eventDraft, id).events.at(-1);
+        const localEvent = createEvent(data, user, { ...eventDraft, time: parseTwelveHourTime(eventDraft.time) }, id).events.at(-1);
         let createdLocally = false;
         if (!online) createdLocally = true;
         else {
@@ -396,7 +397,7 @@ export default function AppScreen() {
         return { createdLocally };
       }, result => {
         setCreateEventOpen(false);
-        setEventDraft({ name: '', location: '', date: localDate(), time: new Date().toTimeString().slice(0, 5) });
+        setEventDraft({ name: '', location: '', date: localDate(), time: currentTwelveHourTime() });
         setNotice(result.createdLocally
           ? 'Event saved on this device only. Students will not be notified; share it in your group chat. It will upload with attendance.'
           : 'Event created and published.');
