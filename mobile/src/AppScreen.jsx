@@ -203,18 +203,25 @@ export default function AppScreen() {
     }
     setRefreshing(true);
     try {
+      let hasUpdates = false;
       await run(async () => {
         if (refreshScope === 'student-attendance') {
           const records = await withServerSession(token => downloadStudentAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
-          await update(current => mergeStudentAttendance(current, user.id, records));
-          return { kind: 'student', count: records.length };
+          await update(current => {
+            const next = mergeStudentAttendance(current, user.id, records);
+            hasUpdates = JSON.stringify(current) !== JSON.stringify(next);
+            return next;
+          });
+          return { kind: 'student' };
         }
         const bootstrap = await withServerSession(token => downloadOrganizerBootstrap(token, process.env.EXPO_PUBLIC_API_URL));
-        await update(current => mergeOrganizerBootstrap(current, bootstrap));
-        return { kind: 'organizer', records: bootstrap.attendance?.length || 0, events: bootstrap.events.length };
-      }, result => setNotice(result.kind === 'student'
-        ? `Attendance updated. ${result.count} server record(s) found.`
-        : `Events and attendance updated. ${result.events} assigned event(s), ${result.records} server record(s).`));
+        await update(current => {
+          const next = mergeOrganizerBootstrap(current, bootstrap);
+          hasUpdates = JSON.stringify(current) !== JSON.stringify(next);
+          return next;
+        });
+        return { kind: 'organizer' };
+      }, () => setNotice(hasUpdates ? 'New updates found.' : 'No new updates.'));
     } finally {
       setRefreshing(false);
     }
