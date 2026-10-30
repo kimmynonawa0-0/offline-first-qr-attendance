@@ -37,8 +37,8 @@ Excel rosters must use the first worksheet and text-formatted Student IDs.
 
 ```csv
 student_id,name,section,email
-2024-00123,Juan Dela Cruz,BSCS-3C,juan@example.com
-2024-00124,"Santos, Maria",BSCS-3C,maria@example.com
+STUDENT-001,Sample Student,TEST-SECTION,student1@example.invalid
+STUDENT-002,"Example, Student",TEST-SECTION,student2@example.invalid
 ```
 
 Email is optional. `Student ID` and `Full Name` header spellings also work.
@@ -108,8 +108,8 @@ migration, and does not reuse native SecureStore credentials.
 Existing events, rosters, and receipts are retained. If an ID was
 stored as both a student and an admin, the admin account/credentials take
 precedence and the duplicate student account is removed. Existing admins now
-log in by student ID, not email. Prototype startup also creates the demo admin
-if `23-02330` is unused, even when older admins exist. It never resets an existing
+log in by student ID, not email. Prototype startup also creates the configured
+demo admin if its account ID is unused, even when older admins exist. It never resets an existing
 password or promotes a student using that ID. Remove this demo provisioning
 before production deployment.
 On native apps, a successful sign-in saves only the active user's ID and role
@@ -132,7 +132,7 @@ instead of asking for the password again.
 To pilot the PWA on Render, create a **Static Site** from this repository with
 root directory `mobile`, build command `npm ci && npm run build:web:release`, and
 publish directory `dist`. Set the static site's `EXPO_PUBLIC_API_URL` to the API
-root, such as `https://norwescan-api.onrender.com`; do not append `/health` or
+root, such as `https://<your-api-host>`; do not append `/health` or
 `/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Render
 assigns to the static site, then redeploy the API. The release build fails early
 if the API URL is missing, not HTTPS, or contains a route path.
@@ -176,7 +176,8 @@ For local Expo testing, configure `EXPO_PUBLIC_API_URL` in
 `mobile/.env.local` and restart Expo. For an APK, set the same variable in the
 Expo project's EAS `preview` environment; the preview build profile is bound to
 that environment. This URL is included in the app, so use the public HTTPS API
-address, never a database URL or password. All phones need a reachable API
+address for your deployment, never a database URL, username, or password. The
+placeholder host above is not a real service address. All phones need a reachable API
 endpoint. Organizer scans remain on the phone until the organizer taps Sync.
 Student attendance history shows server-confirmed records after refresh.
 Students can refresh their own server-synced history from Home or Records while

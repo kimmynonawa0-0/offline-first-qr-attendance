@@ -18,23 +18,28 @@ npm ci
 Set these environment variables before `npm start`:
 
 ```text
-DATABASE_URL=postgres://norwescan:norwescan@localhost:5434/norwescan
-ADMIN_ID=23-02330
-ADMIN_PASSWORD=your-long-private-organizer-password
-MANAGER_ID=99-00001
-MANAGER_PASSWORD=a-different-long-private-manager-password
+DATABASE_URL=postgres://<db-user>:<db-password>@localhost:5434/<db-name>
+ADMIN_ID=<your-organizer-account-id>
+ADMIN_PASSWORD=<unique-private-password>
+MANAGER_USERNAME=<your-private-manager-username>
+MANAGER_PASSWORD=<different-unique-private-password>
 PORT=3000
 ```
 
 For PowerShell, use `$env:DATABASE_URL='...'` (and likewise for the other values)
 in the terminal running the server. A `.env` file is not loaded automatically.
-The server creates or migrates its tables at startup. Keep the credentials
+These are placeholders, not working credentials. Use private values that are
+unique to your deployment, and never commit them or paste them into documentation,
+source control, screenshots, or the mobile app. The server creates or migrates its tables at startup. Keep the credentials
 separate: `ADMIN_ID`/`ADMIN_PASSWORD` seed the legacy organizer app account;
-`MANAGER_ID`/`MANAGER_PASSWORD` seed the system-manager website account. The IDs
-must differ, the passwords must differ, and both passwords must be at least 12 characters. On Render, set
-all four variables before deploying. Open
-`https://YOUR-RENDER-SERVICE.onrender.com/manager` and sign in with the manager
-ID/password; its first login requires a private password change. System managers
+`MANAGER_USERNAME`/`MANAGER_PASSWORD` seed the system-manager website account.
+The username must differ from the organizer ID, and both passwords must be at
+least 12 characters. The manager password may be the same password used for a
+previous account; stored password hashes cannot be read or copied automatically.
+Set `MANAGER_PASSWORD` to the password you want to keep. On Render, set all five
+variables through the service's private environment settings before deploying.
+Open `https://<your-api-host>/manager` and sign in with the manager
+username/password; its first login requires a private password change. System managers
 can import CSV/Excel rosters, manage student profiles, reset student passwords,
 grant or revoke organizer access, create events, assign organizers, review all
 attendance, and inspect the audit log. The student directory groups sections by
@@ -49,7 +54,7 @@ System managers can change their password from **Account** while signed in. On
 that page, choose **Create recovery code** and store the one-time code in a
 private offline location. It is displayed only once; creating another code
 replaces the previous one. If locked out, choose **Forgot password?** on
-`/manager` and use the manager ID and saved code to reset the password. A
+`/manager` and use the manager username and saved code to reset the password. A
 successful reset consumes the code and revokes existing manager sessions. If
 the code is lost, sign in and create a new one; there is no email recovery.
 
@@ -61,7 +66,7 @@ on the server and must never be placed in the mobile app.
 
 For a separately hosted PWA, set the Render API environment variable
 `WEB_ORIGINS` to the exact HTTPS origin serving the PWA, for example
-`https://norwescan-pwa.onrender.com` (no path or trailing slash). Multiple
+`https://<your-pwa-host>` (no path or trailing slash). Multiple
 origins may be comma-separated. Add local origins explicitly for development,
 such as `http://localhost:8081,http://127.0.0.1:4173`; the API does not allow
 unconfigured browser origins. It handles JSON preflight requests and permits only
