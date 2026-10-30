@@ -101,6 +101,10 @@ await pool.query(`INSERT INTO organizers (id, salt, password_hash, credential_in
     must_change_password = CASE WHEN organizers.access_level = 'manager' THEN organizers.must_change_password ELSE TRUE END`,
   [MANAGER_USERNAME, managerSalt, passwordHash(MANAGER_PASSWORD, managerSalt)]);
 await pool.query(`UPDATE organizers SET access_level = 'organizer' WHERE id = $1 AND id <> $2`, [ADMIN_ID, MANAGER_USERNAME]);
+await pool.query(`DELETE FROM organizer_sessions WHERE organizer_id IN
+  (SELECT id FROM organizers WHERE access_level = 'manager' AND id <> $1)`, [MANAGER_USERNAME]);
+await pool.query(`UPDATE organizers SET access_level = 'organizer', enabled = FALSE
+  WHERE access_level = 'manager' AND id <> $1`, [MANAGER_USERNAME]);
 await pool.query(`UPDATE organizers o SET section = s.section, name = s.name
   FROM students s WHERE o.id = s.id AND o.access_level = 'organizer'
   AND (o.section = '' OR o.name = 'Organizer')`);
