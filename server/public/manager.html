@@ -22,7 +22,7 @@
     <section id="login-panel" class="panel login">
       <p class="tag">SYSTEM MANAGER ACCESS</p><h1>Manage attendance from one place.</h1>
       <p>Only the system-manager account can sign in here. Organizer credentials are not accepted.</p>
-      <form id="login-form"><label for="login-id">Student ID</label><input id="login-id" autocomplete="username" required>
+      <form id="login-form"><label for="login-username">Username</label><input id="login-username" autocomplete="username" required>
         <label for="login-password">Password</label><div class="password-field"><input id="login-password" type="password" autocomplete="current-password" required><button class="password-toggle" type="button" data-password-toggle="login-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
         <div class="toolbar"><button id="login-button">Sign in</button><button id="forgot-password" class="secondary" type="button">Forgot password?</button></div><div id="login-message" class="status" role="status"></div>
       </form>
@@ -32,7 +32,7 @@
       <p class="tag">ACCOUNT RECOVERY</p><h1>Reset manager password.</h1>
       <p>Use the one-time recovery code you saved while signed in. The code is consumed after a successful reset.</p>
       <form id="recovery-form">
-        <label for="recovery-id">Manager ID</label><input id="recovery-id" autocomplete="username" required>
+        <label for="recovery-username">Username</label><input id="recovery-username" autocomplete="username" required>
         <label for="recovery-code">Recovery code</label><input id="recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required>
         <label for="recovery-new-password">New password, at least 12 characters</label><div class="password-field"><input id="recovery-new-password" type="password" autocomplete="new-password" minlength="12" required><button class="password-toggle" type="button" data-password-toggle="recovery-new-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
         <label for="recovery-confirm-password">Confirm new password</label><div class="password-field"><input id="recovery-confirm-password" type="password" autocomplete="new-password" minlength="12" required><button class="password-toggle" type="button" data-password-toggle="recovery-confirm-password" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
@@ -160,7 +160,7 @@
     async function login(event) {
       event.preventDefault(); $('#login-message').textContent = 'Checking account…'; $('#login-button').disabled = true;
       try {
-        const result = await api('/auth/login', { method:'POST', body:JSON.stringify({id:$('#login-id').value.trim(),password:$('#login-password').value,client:'manager-web'}) });
+        const result = await api('/auth/login', { method:'POST', body:JSON.stringify({username:$('#login-username').value.trim(),password:$('#login-password').value,client:'manager-web'}) });
         if (result.account?.role !== 'admin' || result.account.accessLevel !== 'manager' || !result.sessionToken) throw new Error('This account is not a system manager. Ask the system manager to review your access.');
         state.token = result.sessionToken; state.account = result.account; sessionStorage.setItem('manager-token', state.token);
         if (result.account.mustChangePassword) {
@@ -171,7 +171,7 @@
     }
     $('#forgot-password').addEventListener('click',()=>{
       $('#login-panel').classList.add('hidden'); $('#recovery-panel').classList.remove('hidden');
-      $('#recovery-id').value=$('#login-id').value.trim(); $('#recovery-message').textContent='';
+      $('#recovery-username').value=$('#login-username').value.trim(); $('#recovery-message').textContent='';
     });
     $('#recovery-cancel').addEventListener('click',()=>{
       $('#recovery-panel').classList.add('hidden'); $('#login-panel').classList.remove('hidden');
@@ -181,9 +181,9 @@
       const newPassword=$('#recovery-new-password').value;
       try{
         if(newPassword!==$('#recovery-confirm-password').value)throw new Error('Passwords do not match.');
-        await api('/auth/admin/password-reset',{method:'POST',body:JSON.stringify({id:$('#recovery-id').value.trim(),recoveryCode:$('#recovery-code').value,newPassword})});
+        await api('/auth/admin/password-reset',{method:'POST',body:JSON.stringify({username:$('#recovery-username').value.trim(),recoveryCode:$('#recovery-code').value,newPassword})});
         $('#login-message').classList.remove('error'); $('#login-message').textContent='Password reset. Sign in with your new password.';
-        $('#login-id').value=$('#recovery-id').value.trim(); $('#login-password').value='';
+        $('#login-username').value=$('#recovery-username').value.trim(); $('#login-password').value='';
         $('#recovery-panel').classList.add('hidden'); $('#login-panel').classList.remove('hidden');
       }catch(error){$('#recovery-message').textContent=error.message;$('#recovery-message').classList.add('error');}
       finally{$('#recovery-button').disabled=false;$('#recovery-code').value='';$('#recovery-new-password').value='';$('#recovery-confirm-password').value='';}

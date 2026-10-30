@@ -190,11 +190,22 @@ const server = http.createServer(async (request, response) => {
     }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return send(400, { error: 'Request body must be a JSON object.' });
     if (request.method === 'POST' && request.url === '/auth/login') {
-      if (typeof body.id !== 'string' || typeof body.password !== 'string') return send(400, { error: 'Student ID and password are required.' });
-      const organizer = await pool.query('SELECT id, salt, password_hash, credential_initialized, must_change_password FROM organizers WHERE id = $1', [body.id.trim()]);
+      const managerLogin = body.client === 'manager-web';
+      const identifier = managerLogin ? body.username : body.id;
+      if (typeof identifier !== 'string' || typeof body.password !== 'string') {
+        return send(400, { error: managerLogin ? 'Username and password are required.' : 'Student ID and password are required.' });
+      }
+      const loginIdentifier = identifier.trim();
+      const organizer = await pool.query('SELECT id, salt, password_hash, credential_initialized, must_change_password FROM organizers WHERE id = $1', [loginIdentifier]);
       if (organizer.rows[0]) {
-        const profile = await pool.query('SELECT enabled, access_level, name, section FROM organizers WHERE id = $1', [body.id.trim()]);
+        const profile = await pool.query('SELECT enabled, access_level, name, section FROM organizers WHERE id = $1', [loginIdentifier]);
         if (profile.rows[0]?.enabled) {
+        if (managerLogin && (loginIdentifier !== MANAGER_ID || profile.rows[0].access_level !== 'manager')) {
+          return send(401, { error: 'Invalid username or password.' });
+        }
+        if (!managerLogin && profile.rows[0].access_level === 'manager') {
+          return send(401, { error: 'System manager accounts must sign in with a username.' });
+        }
         const mustChangePassword = organizer.rows[0].must_change_password;
         let validPassword = await passwordMatchesAsync(body.password, organizer.rows[0].salt, organizer.rows[0].password_hash);
         if (!validPassword && !organizer.rows[0].credential_initialized
@@ -208,7 +219,7 @@ const server = http.createServer(async (request, response) => {
           await pool.query('UPDATE organizers SET credential_initialized = TRUE WHERE id = $1', [organizer.rows[0].id]);
         }
         if (!validPassword) {
-          return send(401, { error: 'Invalid student ID or password.' });
+          return send(401, { error: managerLogin ? 'Invalid username or password.' : 'Invalid student ID or password.' });
         }
         const roleError = loginClientRoleError(body.client, profile.rows[0].access_level);
         if (roleError) return send(403, { error: roleError });
@@ -222,6 +233,7 @@ const server = http.createServer(async (request, response) => {
           role: 'admin', accessLevel: profile.rows[0].access_level, mustChangePassword }, sessionToken: token });
         }
       }
+      if (managerLogin) return send(401, { error: 'Invalid username or password.' });
       const result = await pool.query('SELECT id, name, section, email, password_salt, password_hash, must_change_password FROM students WHERE id = $1', [body.id.trim()]);
       const student = result.rows[0];
       if (!student?.password_hash || !await passwordMatchesAsync(body.password, student.password_salt, student.password_hash)) {
@@ -296,10 +308,10 @@ const server = http.createServer(async (request, response) => {
       return send(200, { recoveryCode });
     }
     if (request.method === 'POST' && request.url === '/auth/admin/password-reset') {
-      if (typeof body.id !== 'string' || typeof body.recoveryCode !== 'string' || typeof body.newPassword !== 'string') {
-        return send(400, { error: 'Manager ID, recovery code, and new password are required.' });
+      if (typeof body.username !== 'string' || typeof body.recoveryCode !== 'string' || typeof body.newPassword !== 'string') {
+        return send(400, { error: 'Username, recovery code, and new password are required.' });
       }
-      if (body.id.trim() !== MANAGER_ID) return send(401, { error: 'The manager ID or recovery code is invalid.' });
+      if (body.username.trim() !== MANAGER_ID) return send(401, { error: 'The username or recovery code is invalid.' });
       if (body.newPassword.trim().length < 12) return send(400, { error: 'Use at least 12 characters for your new password.' });
 
       const client = await pool.connect();
@@ -308,7 +320,7 @@ const server = http.createServer(async (request, response) => {
         const stored = await client.query('SELECT code_hash FROM manager_recovery_codes WHERE manager_id = $1 FOR UPDATE', [MANAGER_ID]);
         if (!stored.rows[0] || !managerRecoveryCodeMatches(body.recoveryCode, stored.rows[0].code_hash)) {
           await client.query('ROLLBACK');
-          return send(401, { error: 'The manager ID or recovery code is invalid.' });
+          return send(401, { error: 'The username or recovery code is invalid.' });
         }
         const salt = randomBytes(16).toString('hex');
         const hash = await passwordHashAsync(body.newPassword, salt);
