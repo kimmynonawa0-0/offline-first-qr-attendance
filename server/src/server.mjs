@@ -10,11 +10,11 @@ import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, 
 import { corsDecision, parseWebOrigins } from './cors.mjs';
 import { createManagerRecoveryCode, hashManagerRecoveryCode, managerRecoveryCodeMatches } from './manager-recovery.mjs';
 
-const { DATABASE_URL, ADMIN_ID, ADMIN_PASSWORD, MANAGER_ID, MANAGER_PASSWORD, PORT = '3000' } = process.env;
+const { DATABASE_URL, ADMIN_ID, ADMIN_PASSWORD, MANAGER_USERNAME, MANAGER_PASSWORD, PORT = '3000' } = process.env;
 if (!DATABASE_URL || !ADMIN_ID || !ADMIN_PASSWORD || ADMIN_PASSWORD.length < 12
-  || !MANAGER_ID || !MANAGER_PASSWORD || MANAGER_PASSWORD.length < 12
-  || MANAGER_ID === ADMIN_ID || MANAGER_PASSWORD === ADMIN_PASSWORD) {
-  throw new Error('Set DATABASE_URL, distinct organizer and manager IDs/passwords; both passwords need at least 12 characters.');
+  || !MANAGER_USERNAME || !MANAGER_PASSWORD || MANAGER_PASSWORD.length < 12
+  || MANAGER_USERNAME === ADMIN_ID) {
+  throw new Error('Set DATABASE_URL and distinct organizer and manager usernames; both passwords need at least 12 characters.');
 }
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const allowedWebOrigins = parseWebOrigins(process.env.WEB_ORIGINS);
@@ -86,10 +86,10 @@ await pool.query(`INSERT INTO organizers (id, salt, password_hash, credential_in
   VALUES ($1, $2, $3, FALSE, 'organizer', 'Pilot Organizer')
   ON CONFLICT (id) DO NOTHING`,
   [ADMIN_ID, organizerSalt, passwordHash(ADMIN_PASSWORD, organizerSalt)]);
-const managerStudent = await pool.query('SELECT 1 FROM students WHERE id = $1', [MANAGER_ID]);
-if (managerStudent.rowCount) throw new Error('MANAGER_ID must not match a student in the roster.');
+const managerUsernameStudent = await pool.query('SELECT 1 FROM students WHERE id = $1', [MANAGER_USERNAME]);
+if (managerUsernameStudent.rowCount) throw new Error('MANAGER_USERNAME must not match a student ID.');
 await pool.query(`DELETE FROM organizer_sessions WHERE organizer_id = $1
-  AND EXISTS (SELECT 1 FROM organizers WHERE id = $1 AND access_level <> 'manager')`, [MANAGER_ID]);
+  AND EXISTS (SELECT 1 FROM organizers WHERE id = $1 AND access_level <> 'manager')`, [MANAGER_USERNAME]);
 const managerSalt = randomBytes(16).toString('hex');
 await pool.query(`INSERT INTO organizers (id, salt, password_hash, credential_initialized, access_level, name, must_change_password)
   VALUES ($1, $2, $3, TRUE, 'manager', 'System Manager', TRUE)
@@ -99,8 +99,8 @@ await pool.query(`INSERT INTO organizers (id, salt, password_hash, credential_in
     credential_initialized = TRUE,
     access_level = 'manager', enabled = TRUE, name = 'System Manager',
     must_change_password = CASE WHEN organizers.access_level = 'manager' THEN organizers.must_change_password ELSE TRUE END`,
-  [MANAGER_ID, managerSalt, passwordHash(MANAGER_PASSWORD, managerSalt)]);
-await pool.query(`UPDATE organizers SET access_level = 'organizer' WHERE id = $1 AND id <> $2`, [ADMIN_ID, MANAGER_ID]);
+  [MANAGER_USERNAME, managerSalt, passwordHash(MANAGER_PASSWORD, managerSalt)]);
+await pool.query(`UPDATE organizers SET access_level = 'organizer' WHERE id = $1 AND id <> $2`, [ADMIN_ID, MANAGER_USERNAME]);
 await pool.query(`UPDATE organizers o SET section = s.section, name = s.name
   FROM students s WHERE o.id = s.id AND o.access_level = 'organizer'
   AND (o.section = '' OR o.name = 'Organizer')`);
@@ -200,7 +200,7 @@ const server = http.createServer(async (request, response) => {
       if (organizer.rows[0]) {
         const profile = await pool.query('SELECT enabled, access_level, name, section FROM organizers WHERE id = $1', [loginIdentifier]);
         if (profile.rows[0]?.enabled) {
-        if (managerLogin && (loginIdentifier !== MANAGER_ID || profile.rows[0].access_level !== 'manager')) {
+        if (managerLogin && (loginIdentifier !== MANAGER_USERNAME || profile.rows[0].access_level !== 'manager')) {
           return send(401, { error: 'Invalid username or password.' });
         }
         if (!managerLogin && profile.rows[0].access_level === 'manager') {
@@ -210,7 +210,7 @@ const server = http.createServer(async (request, response) => {
         let validPassword = await passwordMatchesAsync(body.password, organizer.rows[0].salt, organizer.rows[0].password_hash);
         if (!validPassword && !organizer.rows[0].credential_initialized
           && ((organizer.rows[0].id === ADMIN_ID && body.password === ADMIN_PASSWORD)
-            || (organizer.rows[0].id === MANAGER_ID && body.password === MANAGER_PASSWORD))) {
+            || (organizer.rows[0].id === MANAGER_USERNAME && body.password === MANAGER_PASSWORD))) {
           const salt = randomBytes(16).toString('hex');
           await pool.query('UPDATE organizers SET salt = $2, password_hash = $3, credential_initialized = TRUE WHERE id = $1',
             [organizer.rows[0].id, salt, await passwordHashAsync(body.password, salt)]);
@@ -300,24 +300,24 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'POST' && request.url === '/auth/admin/recovery-code') {
       const account = await organizerForRequest(request);
-      if (!isManager(account) || account.id !== MANAGER_ID) return send(403, { error: 'Only the signed-in system manager can create a recovery code.' });
+      if (!isManager(account) || account.id !== MANAGER_USERNAME) return send(403, { error: 'Only the signed-in system manager can create a recovery code.' });
       const recoveryCode = createManagerRecoveryCode();
       await pool.query(`INSERT INTO manager_recovery_codes (manager_id, code_hash)
         VALUES ($1, $2) ON CONFLICT (manager_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, created_at = NOW()`,
-      [MANAGER_ID, hashManagerRecoveryCode(recoveryCode)]);
+      [MANAGER_USERNAME, hashManagerRecoveryCode(recoveryCode)]);
       return send(200, { recoveryCode });
     }
     if (request.method === 'POST' && request.url === '/auth/admin/password-reset') {
       if (typeof body.username !== 'string' || typeof body.recoveryCode !== 'string' || typeof body.newPassword !== 'string') {
         return send(400, { error: 'Username, recovery code, and new password are required.' });
       }
-      if (body.username.trim() !== MANAGER_ID) return send(401, { error: 'The username or recovery code is invalid.' });
+      if (body.username.trim() !== MANAGER_USERNAME) return send(401, { error: 'The username or recovery code is invalid.' });
       if (body.newPassword.trim().length < 12) return send(400, { error: 'Use at least 12 characters for your new password.' });
 
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const stored = await client.query('SELECT code_hash FROM manager_recovery_codes WHERE manager_id = $1 FOR UPDATE', [MANAGER_ID]);
+        const stored = await client.query('SELECT code_hash FROM manager_recovery_codes WHERE manager_id = $1 FOR UPDATE', [MANAGER_USERNAME]);
         if (!stored.rows[0] || !managerRecoveryCodeMatches(body.recoveryCode, stored.rows[0].code_hash)) {
           await client.query('ROLLBACK');
           return send(401, { error: 'The username or recovery code is invalid.' });
@@ -326,9 +326,9 @@ const server = http.createServer(async (request, response) => {
         const hash = await passwordHashAsync(body.newPassword, salt);
         await client.query(`UPDATE organizers SET salt = $2, password_hash = $3,
           credential_initialized = TRUE, must_change_password = FALSE WHERE id = $1 AND access_level = 'manager'`,
-        [MANAGER_ID, salt, hash]);
-        await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [MANAGER_ID]);
-        await client.query('DELETE FROM manager_recovery_codes WHERE manager_id = $1', [MANAGER_ID]);
+        [MANAGER_USERNAME, salt, hash]);
+        await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [MANAGER_USERNAME]);
+        await client.query('DELETE FROM manager_recovery_codes WHERE manager_id = $1', [MANAGER_USERNAME]);
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
@@ -367,9 +367,6 @@ const server = http.createServer(async (request, response) => {
       if (!canImportRoster(account)) return send(403, { error: account.must_change_password ? 'Change your temporary password before importing a roster.' : 'Your organizer profile needs a roster section before importing.' });
       const scopeError = rosterScopeError(account, body.students);
       if (scopeError) return send(403, { error: scopeError });
-      if (Array.isArray(body.students) && body.students.some(student => student?.id?.trim?.() === MANAGER_ID)) {
-        return send(400, { error: 'The system manager ID cannot also be imported as a student.' });
-      }
       const client = await pool.connect();
       try {
         const counts = await provisionRoster(client, body.students);
@@ -386,7 +383,6 @@ const server = http.createServer(async (request, response) => {
       const students = parseRosterFile(body.fileName, body.fileBase64);
       const scopeError = rosterScopeError(account, students);
       if (scopeError) return send(403, { error: scopeError });
-      if (students.some(student => student.id === MANAGER_ID)) return send(400, { error: 'The system manager ID cannot also be imported as a student.' });
       return send(200, { students });
     }
     if (request.method === 'POST' && request.url === '/organizer/events') {
@@ -484,7 +480,6 @@ const server = http.createServer(async (request, response) => {
       let student;
       try { student = validateManagedStudent(body); }
       catch (error) { return send(400, { error: error.message }); }
-      if (student.id === MANAGER_ID) return send(400, { error: 'The system manager ID cannot be used for a student account.' });
       const salt = randomBytes(16).toString('hex');
       const hash = await passwordHashAsync(student.section, salt);
       const client = await pool.connect();
@@ -516,7 +511,6 @@ const server = http.createServer(async (request, response) => {
       let student;
       try { student = validateManagedStudent({ ...body, id: studentId }); }
       catch (error) { return send(400, { error: error.message }); }
-      if (student.id === MANAGER_ID) return send(400, { error: 'The system manager ID cannot be edited as a student.' });
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -621,7 +615,6 @@ const server = http.createServer(async (request, response) => {
       const encodedId = request.url.slice('/management/students/'.length);
       if (!encodedId || encodedId.includes('/')) return send(404, { error: 'Student account was not found.' });
       const studentId = decodeURIComponent(encodedId);
-      if (studentId === MANAGER_ID) return send(400, { error: 'The system manager account cannot be deleted as a student.' });
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -668,7 +661,7 @@ const server = http.createServer(async (request, response) => {
       if (!isManager(manager)) return send(403, { error: 'Only a system manager can manage organizer access.' });
       const organizerId = decodeURIComponent(request.url.slice('/management/organizers/'.length));
       if (typeof body.enabled !== 'boolean') return send(400, { error: 'Choose whether organizer access is enabled.' });
-      if (organizerId === MANAGER_ID && body.enabled !== true) return send(400, { error: 'The bootstrap system manager cannot be disabled here.' });
+      if (organizerId === MANAGER_USERNAME && body.enabled !== true) return send(400, { error: 'The bootstrap system manager cannot be disabled here.' });
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
