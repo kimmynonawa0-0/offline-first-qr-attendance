@@ -109,6 +109,7 @@
     </section>
   </main>
   <dialog id="section-delete-dialog"><form id="section-delete-form"><h2 id="section-delete-title">Confirm section deletion</h2><p>Re-enter the system manager password to permanently delete this section.</p><label for="section-delete-password">System manager password</label><input id="section-delete-password" type="password" autocomplete="current-password" required><div class="toolbar"><button id="section-delete-confirm">Delete section</button><button id="section-delete-cancel" class="secondary" type="button">Cancel</button></div></form></dialog>
+  <dialog id="event-delete-dialog"><form id="event-delete-form"><h2 id="event-delete-title">Delete event?</h2><p id="event-delete-warning"></p><label for="event-delete-password">System manager password</label><input id="event-delete-password" type="password" autocomplete="current-password" required><div class="toolbar"><button id="event-delete-confirm" class="danger">Delete event</button><button id="event-delete-cancel" class="secondary" type="button">Cancel</button></div></form></dialog>
   <script>
     const $ = selector => document.querySelector(selector);
     function setPasswordVisibility(button, input, visible, animate = true) {
@@ -149,6 +150,33 @@
           dialog.removeEventListener('cancel', onCancel);
           if (dialog.open) dialog.close();
           $('#section-delete-password').value = '';
+          resolve(password);
+        };
+        form.addEventListener('submit', onSubmit);
+        cancel.addEventListener('click', onCancel);
+        dialog.addEventListener('cancel', onCancel);
+      });
+    }
+    function requestEventDelete(target) {
+      const dialog = $('#event-delete-dialog');
+      const count = target.attendance_count ?? 0;
+      $('#event-delete-title').textContent = `Delete ${target.name}?`;
+      $('#event-delete-warning').textContent = count > 0
+        ? `This event already has ${count} synced check-in${count === 1 ? '' : 's'}. Force deletion permanently deletes the event and those attendance records. Unsynced scans on offline devices will fail to upload. This cannot be undone.`
+        : 'This event has no synced check-ins. Deleting it cannot be undone.';
+      $('#event-delete-password').value = '';
+      dialog.showModal();
+      return new Promise(resolve => {
+        const form = $('#event-delete-form');
+        const cancel = $('#event-delete-cancel');
+        const onSubmit = event => { event.preventDefault(); finish($('#event-delete-password').value); };
+        const onCancel = () => finish(null);
+        const finish = password => {
+          form.removeEventListener('submit', onSubmit);
+          cancel.removeEventListener('click', onCancel);
+          dialog.removeEventListener('cancel', onCancel);
+          if (dialog.open) dialog.close();
+          $('#event-delete-password').value = '';
           resolve(password);
         };
         form.addEventListener('submit', onSubmit);
@@ -242,7 +270,7 @@
       const active = d.organizers.filter(org=>org.enabled && org.access_level==='organizer');
       $('#event-organizers').innerHTML = active.length ? active.map(org=>`<label class="check"><input type="checkbox" value="${esc(org.id)}">${esc(org.name)} · ${esc(org.id)}</label>`).join('') : '<p class="muted">Grant organizer access before assigning an event.</p>';
       $('#create-event').disabled = !active.length;
-      $('#event-list').innerHTML = `<h2>Events</h2>${eventTable(d.events)}`;
+      $('#event-list').innerHTML = `<h2>Events</h2>${eventTable(d.events, true)}`;
       renderStudentDirectory(d.students);
     }
     function sectionInfo(section) {
@@ -304,7 +332,11 @@
       $('#student-id').disabled = false;
     }
     function table(headings, rows) { return `<div class="tablewrap"><table><thead><tr>${headings.map(item=>`<th>${item}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headings.length}">No records found.</td></tr>`}</tbody></table></div>`; }
-    function eventTable(events) { return table(['Event','Date / Time','Location','Organizers','Check-ins'], events.map(event=>`<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td><td>${(event.organizers||[]).map(org=>esc(org.name)).join(', ')||'—'}</td><td>${event.attendance_count ?? 0}</td></tr>`).join('')); }
+    function eventTable(events, showActions = false) {
+      const headings = ['Event','Date / Time','Location','Organizers','Check-ins'];
+      if (showActions) headings.push('Action');
+      return table(headings, events.map(event=>`<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td><td>${(event.organizers||[]).map(org=>esc(org.name)).join(', ')||'—'}</td><td>${event.attendance_count ?? 0}</td>${showActions ? `<td><button class="danger" data-event-delete="${esc(event.id)}">${(event.attendance_count ?? 0) > 0 ? 'Force delete' : 'Delete'}</button></td>` : ''}</tr>`).join(''));
+    }
     $('#login-form').addEventListener('submit', login);
     document.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',async()=>{
       const name=button.dataset.page; showPage(name); message('');
@@ -427,6 +459,21 @@
       if(!event.name||!event.location||!event.date||!event.time||!organizerIds.length){message('Complete event details and select at least one organizer.',true);return;}
       try{await api('/management/events',{method:'POST',body:JSON.stringify({event,organizerIds})});$('#event-name').value='';$('#event-location').value='';$('#event-organizers').querySelectorAll('input').forEach(input=>input.checked=false);await refresh();message('Event created and assigned. Organizers can download it when they sign in online.');}
       catch(error){message(error.message,true);}
+    });
+    $('#event-list').addEventListener('click', async event => {
+      const button = event.target.closest('[data-event-delete]');
+      if (!button) return;
+      const target = state.overview?.events.find(item => item.id === button.dataset.eventDelete);
+      if (!target) { message('Event was not found. Refresh the event list and try again.', true); return; }
+      const password = await requestEventDelete(target);
+      if (!password) return;
+      try {
+        const result = await api(`/management/events/${encodeURIComponent(target.id)}`, { method:'DELETE', body:JSON.stringify({ password }) });
+        await refresh();
+        message(result.deletedAttendance
+          ? `Event deleted with ${result.deletedAttendance} attendance record${result.deletedAttendance === 1 ? '' : 's'}.`
+          : 'Event deleted.');
+      } catch(error) { message(error.message, true); }
     });
     async function loadAttendance(){const result=await api('/management/attendance');$('#attendance-list').innerHTML=table(['Student ID','Student','Event','Location','Time In','Time Out'],result.records.map(row=>`<tr><td>${esc(row.student_id)}</td><td>${esc(row.student_name)}</td><td>${esc(row.event_name)}</td><td>${esc(row.location)}</td><td>${esc(row.time_in_at||row.recorded_at)} / ${esc(row.time_in_method||row.method)}</td><td>${esc(row.time_out_at||'—')}${row.time_out_method?` / ${esc(row.time_out_method)}`:''}</td></tr>`).join(''));}
     if(state.token){state.account={id:'',name:'System Manager'};enter();}

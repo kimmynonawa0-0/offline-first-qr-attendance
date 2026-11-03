@@ -42,7 +42,10 @@ Open `https://<your-api-host>/manager` and sign in with the manager
 username/password; its first login requires a private password change. System managers
 can import CSV/Excel rosters, manage student profiles, reset student passwords,
 grant or revoke organizer access, create events, assign organizers, review all
-attendance, and inspect the audit log. The student directory groups sections by
+attendance, and inspect the audit log. A system manager can also delete an
+event that already has check-ins after re-entering the manager password; this
+force deletion removes the event and its attendance records. The student
+directory groups sections by
 program and year. New students and password resets use the section as a temporary
 password and require a password change. Deleting a student revokes their organizer
 access but preserves historical attendance. Event organizers use the PWA/mobile
@@ -58,6 +61,24 @@ replaces the previous one. If locked out, choose **Forgot password?** on
 successful reset consumes the code and revokes existing manager sessions. If
 the code is lost, sign in and create a new one; there is no email recovery.
 
+If the recovery code is also lost, a developer with database access can restore
+the manager account from a trusted machine using the `MANAGER_PASSWORD` value
+already configured for the service:
+
+```sh
+cd server
+$env:DATABASE_URL='<external database URL>'
+$env:MANAGER_USERNAME='<manager username>'
+$env:MANAGER_PASSWORD='<configured manager password>'
+npm run reset-manager-password -- --confirm
+```
+
+The script requires `--confirm`, revokes manager sessions, clears any saved
+recovery code, and requires a password change at the next sign-in. Change the
+password and create a new recovery code immediately after recovering access.
+Redeploying the service does not reset a changed manager password; only this
+explicit script does.
+
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
 For testing across different networks, deploy this API behind HTTPS and point it
@@ -70,7 +91,7 @@ For a separately hosted PWA, set the Render API environment variable
 origins may be comma-separated. Add local origins explicitly for development,
 such as `http://localhost:8081,http://127.0.0.1:4173`; the API does not allow
 unconfigured browser origins. It handles JSON preflight requests and permits only
-`GET`, `POST`, and the `Content-Type` and `Authorization` headers used by the
+`GET`, `POST`, `DELETE`, and the `Content-Type` and `Authorization` headers used by the
 app. This is browser cross-origin configuration, not authentication; API routes
 still enforce account and organizer-session authorization.
 
@@ -78,7 +99,9 @@ To make a student an organizer, import that student first, then grant organizer
 access by student ID. Their existing password remains the same. The organizer
 signs in to the PWA or mobile app with the same credentials. Online app login
 downloads the assigned
-events and student roster into local SQLite. The app saves each scan locally;
+events and student roster into local SQLite. Organizers can delete an event they
+created while it has no check-ins; once the event has any scan, only the system
+manager can delete it. The app saves each scan locally;
 Sync sends only pending records and the server checks event assignment and
 student membership before accepting them. A revoked organizer cannot sign in or
 sync; offline scans remain on that phone and cannot be uploaded while access is
