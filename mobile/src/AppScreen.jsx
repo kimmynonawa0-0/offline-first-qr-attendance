@@ -13,8 +13,8 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { attendanceStatus, checkIn, createEvent, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
-import { createOrganizerEvent, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
+import { attendanceStatus, checkIn, createEvent, deleteEvent, eventAttendanceCount, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { createOrganizerEvent, deleteOrganizerEvent, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
 import { serverRefreshScope } from './server-refresh.mjs';
 import PullToRefreshScrollView from './PullToRefreshScrollView';
@@ -238,6 +238,31 @@ export default function AppScreen() {
       } catch { setError('Could not clear the saved sign-in safely. You are still signed in. Please try again.'); }
     } });
   }
+  function requestDeleteEvent(event) {
+    const scans = eventAttendanceCount(data, event.id);
+    if (scans > 0) {
+      setNotice('This event already has check-ins. Ask the system manager to delete it.');
+      return;
+    }
+    setError('');
+    setConfirm({
+      title: 'Delete event?',
+      message: `"${event.name}" will be permanently deleted${event.createdLocally ? ' from this device' : ' for every assigned organizer'}. This cannot be undone.`,
+      action: () => run(async () => {
+        if (event.createdLocally) {
+          await update(current => deleteEvent(current, user, event.id));
+          return;
+        }
+        if (online === false) throw new Error('Connect to the internet to delete this published event.');
+        await withServerSession(token => deleteOrganizerEvent(event.id, user, token, process.env.EXPO_PUBLIC_API_URL));
+        await update(current => deleteEvent(current, user, event.id));
+      }, () => {
+        setConfirm(null);
+        setNotice('Event deleted.');
+        if (screen === 'event') replace('history');
+      }),
+    });
+  }
   if (loading || !data) return <SafeAreaView style={styles.safe}><View style={{ padding: 24 }}>
     <BrandMark />{loading ? <ActivityIndicator color={colors.yellow} /> : <><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
   </View></SafeAreaView>;
@@ -261,6 +286,9 @@ export default function AppScreen() {
   const todayRecords = data.records.filter(r => r.date === localDate());
   const pending = data.records.filter(r => !r.synced).length;
   const ownAttendance = event?.attendees.find(a => a.id === user?.id);
+  const eventScanCount = event ? eventAttendanceCount(data, event.id) : 0;
+  const canDeleteEvent = Boolean(event && user?.role === 'admin'
+    && (event.createdBy === user.id || (event.createdLocally && !event.createdBy)));
   const receipt = data.records.find(r => r.id === recordId);
   const latestPersonalRecord = personalRecords[0];
 
@@ -322,6 +350,9 @@ export default function AppScreen() {
     <Card admin><EventSummary event={event} />
       <Button purple onPress={() => go('scanner', { eventId, scanMode: 'time-in' })}>Scan Time In</Button>
       <Button secondary onPress={() => go('scanner', { eventId, scanMode: 'time-out' })}>Scan Time Out</Button>
+      {canDeleteEvent && (eventScanCount > 0
+        ? <Muted>This event has {eventScanCount} check-in{eventScanCount === 1 ? '' : 's'}. Only the system manager can delete it.</Muted>
+        : <Button danger onPress={() => requestDeleteEvent(event)}>Delete event</Button>)}
     </Card>
     <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
       <Muted>Time In: {ownAttendance?.time || displayTime(ownAttendance?.timeInAt)}</Muted>

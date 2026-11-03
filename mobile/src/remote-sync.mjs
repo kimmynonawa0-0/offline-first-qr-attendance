@@ -7,14 +7,15 @@ function requestError(message, status = null, retryable = false) {
 
 export const isRetryableAuthFailure = error => Boolean(error?.retryable);
 
-async function postJson(apiUrl, path, body, fetchImpl, token) {
+async function requestJson(apiUrl, path, method, body, fetchImpl, token) {
   if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');
   let response;
   const controller = typeof AbortController === 'undefined' ? null : new AbortController();
   const timeout = controller ? setTimeout(() => controller.abort(), 60000) : null;
   try {
     response = await fetchImpl(`${apiUrl.replace(/\/$/, '')}${path}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+      method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       ...(controller ? { signal: controller.signal } : {}),
     });
   } catch (error) {
@@ -30,6 +31,10 @@ async function postJson(apiUrl, path, body, fetchImpl, token) {
   }
   if (!response.ok) throw requestError(result.error || 'Server request failed.', response.status, response.status >= 500);
   return result;
+}
+
+async function postJson(apiUrl, path, body, fetchImpl, token) {
+  return requestJson(apiUrl, path, 'POST', body, fetchImpl, token);
 }
 
 export async function uploadRosterToServer(students, user, token, apiUrl, fetchImpl = fetch) {
@@ -71,6 +76,14 @@ export async function createOrganizerEvent(event, user, token, apiUrl, fetchImpl
   const result = await postJson(apiUrl, '/organizer/events', { event, organizerIds: [user.id] }, fetchImpl, token);
   if (!result.event?.id || result.event.id !== event.id) throw new Error('Server did not confirm the event creation.');
   return result.event;
+}
+
+export async function deleteOrganizerEvent(eventId, user, token, apiUrl, fetchImpl = fetch) {
+  if (user?.role !== 'admin') throw new Error('Log in as an organizer to delete an event.');
+  if (!token) throw new Error('Sign in online as an organizer to delete an event.');
+  const result = await requestJson(apiUrl, `/organizer/events/${encodeURIComponent(eventId)}`, 'DELETE', undefined, fetchImpl, token);
+  if (result.ok !== true) throw new Error('Server did not confirm the event deletion.');
+  return result;
 }
 
 export async function changeStudentPasswordRemotely(user, token, currentPassword, newPassword, apiUrl, fetchImpl = fetch) {

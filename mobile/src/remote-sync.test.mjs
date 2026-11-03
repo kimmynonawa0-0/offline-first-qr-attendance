@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, createOrganizerEvent, downloadOrganizerAttendance, downloadOrganizerBootstrap, downloadStudentAttendance, isRetryableAuthFailure, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, createOrganizerEvent, deleteOrganizerEvent, downloadOrganizerAttendance, downloadOrganizerBootstrap, downloadStudentAttendance, isRetryableAuthFailure, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth, syncToServer, uploadRosterToServer } from './remote-sync.mjs';
 
 test('organizer event creation posts an authenticated event and confirms it', async () => {
   const event = { id: 'e1', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00' };
@@ -12,6 +12,18 @@ test('organizer event creation posts an authenticated event and confirms it', as
   });
   assert.deepEqual(result, event);
   await assert.rejects(createOrganizerEvent(event, { id: 'student', role: 'student' }, 'session', 'https://api.test'), /organizer/);
+});
+
+test('organizer event deletion uses the scoped DELETE endpoint', async () => {
+  const result = await deleteOrganizerEvent('e/1', { id: 'org', role: 'admin' }, 'session', 'https://api.test', async (url, options) => {
+    assert.equal(url, 'https://api.test/organizer/events/e%2F1');
+    assert.equal(options.method, 'DELETE');
+    assert.equal(options.body, undefined);
+    assert.equal(options.headers.Authorization, 'Bearer session');
+    return { ok: true, json: async () => ({ ok: true, deletedAttendance: 0 }) };
+  });
+  assert.deepEqual(result, { ok: true, deletedAttendance: 0 });
+  await assert.rejects(deleteOrganizerEvent('e1', { id: 'student', role: 'student' }, 'session', 'https://api.test'), /organizer/);
 });
 
 test('remote sync sends only pending receipts and confirms only accepted IDs', async () => {

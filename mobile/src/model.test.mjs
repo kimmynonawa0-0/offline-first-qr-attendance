@@ -216,7 +216,10 @@ test('attendance supports one Time In and one Time Out per event without duplica
   assert.equal(data.records[0].studentId, admin.id);
   assert.throws(() => checkIn(data, { ...admin, role: 'student' }, 'second', admin, 'scan', 'bad'), /Log in/);
   assert.throws(() => checkIn(data, admin, 'second', { id: 'not-rostered', name: 'Unknown' }, 'scan', 'bad'), /not in the imported student roster/);
-  const deleted = deleteEvent(data, admin, 'second');
+  data = createEvent(data, admin, event, 'empty');
+  assert.throws(() => deleteEvent(data, admin, 'second'), /attendance records/);
+  const deleted = deleteEvent(data, admin, 'empty');
+  assert.equal(deleted.events.some(item => item.id === 'empty'), false);
   assert.equal(deleted.records.length, 2);
   assert.ok(deleted.records.every(record => !record.synced));
 });

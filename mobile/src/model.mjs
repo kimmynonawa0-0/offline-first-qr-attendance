@@ -166,12 +166,25 @@ export function createEvent(data, user, fields, id) {
   requireValue(/^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(parsedDate.getTime()) && localDate(parsedDate) === date,
     'Enter a valid date as YYYY-MM-DD.');
   requireValue(/^([01]\d|2[0-3]):[0-5]\d$/.test(time), 'Enter a valid time as HH:MM (24-hour).');
-  return { ...data, events: [...data.events, { id, name, location, date, time, attendees: [] }] };
+  return { ...data, events: [...data.events, { id, name, location, date, time, attendees: [], createdBy: user.id }] };
+}
+
+export function eventAttendanceCount(data, eventId) {
+  const event = data.events.find(item => item.id === eventId);
+  return new Set([
+    ...(event?.attendees || []).map(attendee => attendee.id),
+    ...data.records.filter(record => record.eventId === eventId).map(record => record.studentId),
+  ]).size;
 }
 
 export function deleteEvent(data, user, id) {
   requireAdmin(data, user);
-  // Keep historical attendance receipts, matching the browser prototype.
+  const event = data.events.find(item => item.id === id);
+  requireValue(event, 'Event no longer exists.');
+  requireValue(event.createdBy === user.id || (event.createdLocally && !event.createdBy),
+    'Only the organizer who created this event can delete it.');
+  requireValue(eventAttendanceCount(data, id) === 0,
+    'This event already has attendance records. Ask the system manager to delete it.');
   return { ...data, events: data.events.filter(e => e.id !== id) };
 }
 
