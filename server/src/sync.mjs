@@ -61,8 +61,8 @@ export async function saveBatch(client, body, organizerId) {
     }
     for (const event of body.events) {
       if (event.createdLocally) {
-        const inserted = await client.query('INSERT INTO events (id, name, location, date, time) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING RETURNING id',
-          [event.id, event.name, event.location, event.date, event.time]);
+        const inserted = await client.query('INSERT INTO events (id, name, location, date, time, created_by) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING RETURNING id',
+          [event.id, event.name, event.location, event.date, event.time, organizerId]);
         if (inserted.rows[0]?.id) {
           await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [event.id, organizerId]);
         } else {

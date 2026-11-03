@@ -34,6 +34,14 @@ export function canCreateOrganizerEvent(account) {
   return account?.access_level === 'organizer' && !account.must_change_password;
 }
 
+export function organizerEventDeleteError(account, event, attendanceCount) {
+  if (!account || account.access_level !== 'organizer') return 'Only an event organizer can delete an event.';
+  if (account.must_change_password) return 'Change your temporary password before deleting events.';
+  if (!event || event.created_by !== account.id) return 'Only the organizer who created this event can delete it.';
+  if (attendanceCount > 0) return 'This event already has attendance records. Ask the system manager to delete it.';
+  return null;
+}
+
 export function organizerEventAssigneeIds(account, requestedIds) {
   if (!canCreateOrganizerEvent(account) || !Array.isArray(requestedIds)) return null;
   const ids = requestedIds.map(id => typeof id === 'string' ? id.trim() : '');

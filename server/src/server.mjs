@@ -6,7 +6,7 @@ import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, valid
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
 import { validateManagedStudent } from './management-students.mjs';
-import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, rosterScopeError } from './auth.mjs';
+import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, organizerEventDeleteError, rosterScopeError } from './auth.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
 import { createManagerRecoveryCode, hashManagerRecoveryCode, managerRecoveryCodeMatches } from './manager-recovery.mjs';
 
@@ -70,6 +70,12 @@ await pool.query(`ALTER TABLE organizers ADD COLUMN IF NOT EXISTS access_level T
   ALTER TABLE students ADD COLUMN IF NOT EXISTS password_salt TEXT;
   ALTER TABLE students ADD COLUMN IF NOT EXISTS password_hash TEXT;
   ALTER TABLE students ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT TRUE;`);
+await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT;
+  UPDATE events e SET created_by = (
+    SELECT a.actor_id FROM management_audit a
+    WHERE a.action = 'event_created' AND a.entity_id = e.id
+    ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+  ) WHERE e.created_by IS NULL;`);
 await pool.query(`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_date TEXT;
   ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_time TEXT;
   ALTER TABLE attendance ADD COLUMN IF NOT EXISTS time_in_at TEXT;
@@ -403,12 +409,44 @@ const server = http.createServer(async (request, response) => {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        await client.query('INSERT INTO events (id, name, location, date, time) VALUES ($1, $2, $3, $4, $5)',
-          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim()]);
+        await client.query('INSERT INTO events (id, name, location, date, time, created_by) VALUES ($1, $2, $3, $4, $5, $6)',
+          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim(), organizer.id]);
         for (const id of organizerIds) await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2)', [event.id.trim(), id]);
         await writeAudit(client, organizer.id, 'event_created', event.id.trim(), { organizerIds });
         await client.query('COMMIT');
         return send(201, { event: { ...event, organizers: organizerIds.length } });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    }
+    if (request.method === 'DELETE' && request.url.startsWith('/organizer/events/')) {
+      const organizer = await organizerForRequest(request);
+      if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
+      const encodedId = request.url.slice('/organizer/events/'.length);
+      if (!encodedId || encodedId.includes('/')) return send(404, { error: 'Event was not found.' });
+      const eventId = decodeURIComponent(encodedId);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query('SELECT id, name, date, time, created_by FROM events WHERE id = $1 FOR UPDATE', [eventId]);
+        const event = result.rows[0];
+        if (!event) {
+          await client.query('ROLLBACK');
+          return send(404, { error: 'Event was not found.' });
+        }
+        const attendance = await client.query('SELECT COUNT(*)::int AS count FROM attendance WHERE event_id = $1', [eventId]);
+        const attendanceCount = attendance.rows[0].count;
+        const denial = organizerEventDeleteError(organizer, event, attendanceCount);
+        if (denial) {
+          await client.query('ROLLBACK');
+          const status = attendanceCount > 0 && event.created_by === organizer.id ? 409 : 403;
+          return send(status, { error: denial });
+        }
+        await client.query('DELETE FROM events WHERE id = $1', [eventId]);
+        await writeAudit(client, organizer.id, 'event_deleted', eventId, {
+          eventName: event.name, eventDate: event.date, attendanceCount: 0, forced: false,
+        });
+        await client.query('COMMIT');
+        return send(200, { ok: true, deletedAttendance: 0 });
       } catch (error) { await client.query('ROLLBACK'); throw error; }
       finally { client.release(); }
     }
@@ -427,6 +465,7 @@ const server = http.createServer(async (request, response) => {
       if (organizer.access_level !== 'organizer') return send(403, { error: 'System manager accounts use the management website, not the scanning app.' });
       if (organizer.must_change_password) return send(403, { error: 'Change your temporary password before downloading the student roster.' });
       const result = await pool.query(`SELECT e.id, e.name, e.location, e.date, e.time,
+        e.created_by AS "createdBy",
         (SELECT COALESCE(json_agg(json_build_object('id', assigned.id, 'name', assigned.name)), '[]')
           FROM event_organizers links JOIN organizers assigned ON assigned.id = links.organizer_id
           WHERE links.event_id = e.id AND assigned.enabled = TRUE) AS organizers
@@ -697,12 +736,48 @@ const server = http.createServer(async (request, response) => {
           return send(400, { error: 'Every assigned organizer must have an active account.' });
         }
         const event = body.event;
-        await client.query('INSERT INTO events (id, name, location, date, time) VALUES ($1, $2, $3, $4, $5)',
-          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim()]);
+        await client.query('INSERT INTO events (id, name, location, date, time, created_by) VALUES ($1, $2, $3, $4, $5, $6)',
+          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim(), manager.id]);
         for (const id of ids) await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2)', [event.id.trim(), id]);
         await writeAudit(client, manager.id, 'event_created', event.id.trim(), { organizerIds: ids });
         await client.query('COMMIT');
         return send(201, { event: { ...event, organizers: ids.length } });
+      } catch (error) { await client.query('ROLLBACK'); throw error; }
+      finally { client.release(); }
+    }
+    if (request.method === 'DELETE' && request.url.startsWith('/management/events/')) {
+      const manager = await organizerForRequest(request);
+      if (!manager) return send(401, { error: 'Sign in to the management website.' });
+      if (!isManager(manager)) return send(403, { error: 'Only a system manager can delete events.' });
+      const encodedId = request.url.slice('/management/events/'.length);
+      if (!encodedId || encodedId.includes('/')) return send(404, { error: 'Event was not found.' });
+      const eventId = decodeURIComponent(encodedId);
+      if (typeof body.password !== 'string' || !body.password) {
+        return send(400, { error: 'Re-enter the system manager password to delete an event.' });
+      }
+      const credentials = await pool.query(`SELECT salt, password_hash FROM organizers
+        WHERE id = $1 AND access_level = 'manager'`, [manager.id]);
+      if (!credentials.rows[0] || !await passwordMatchesAsync(body.password, credentials.rows[0].salt, credentials.rows[0].password_hash)) {
+        return send(401, { error: 'The system manager password is incorrect. No event was deleted.' });
+      }
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query('SELECT id, name, date, time FROM events WHERE id = $1 FOR UPDATE', [eventId]);
+        const event = result.rows[0];
+        if (!event) {
+          await client.query('ROLLBACK');
+          return send(404, { error: 'Event was not found.' });
+        }
+        const attendance = await client.query('SELECT COUNT(*)::int AS count FROM attendance WHERE event_id = $1', [eventId]);
+        const attendanceCount = attendance.rows[0].count;
+        await client.query('DELETE FROM attendance WHERE event_id = $1', [eventId]);
+        await client.query('DELETE FROM events WHERE id = $1', [eventId]);
+        await writeAudit(client, manager.id, 'event_deleted', eventId, {
+          eventName: event.name, eventDate: event.date, attendanceCount, forced: true,
+        });
+        await client.query('COMMIT');
+        return send(200, { ok: true, deletedAttendance: attendanceCount });
       } catch (error) { await client.query('ROLLBACK'); throw error; }
       finally { client.release(); }
     }
@@ -781,8 +856,9 @@ const server = http.createServer(async (request, response) => {
       console.error(`[request ${requestId}] ${request.method} ${request.url}`, error);
       const offlineMessage = request.url === '/roster/upload' ? 'Roster import failed on the server. No partial roster was saved.'
         : request.url === '/management/events' ? 'Event creation failed on the server. Refresh the event list before retrying.'
-          : request.url === '/sync' ? 'Attendance sync failed. Records remain saved on this device.'
-            : 'The server could not complete this request.';
+          : request.url.startsWith('/management/events/') || request.url.startsWith('/organizer/events/') ? 'Event deletion failed on the server. Refresh the event list before retrying.'
+            : request.url === '/sync' ? 'Attendance sync failed. Records remain saved on this device.'
+              : 'The server could not complete this request.';
       const unavailable = error.code?.startsWith('08') || ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(error.code);
       send(unavailable ? 503 : 500, { error: offlineMessage, requestId });
     }

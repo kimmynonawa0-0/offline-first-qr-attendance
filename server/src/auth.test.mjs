@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, rosterScopeError } from './auth.mjs';
+import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, organizerEventDeleteError, rosterScopeError } from './auth.mjs';
 
 test('organizer sessions use unpredictable bearer tokens stored only as hashes', () => {
   const first = createOrganizerSessionToken();
@@ -31,4 +31,13 @@ test('organizer app uploads are scoped to its section and available after passwo
   assert.equal(canImportRoster({ ...organizer, section:'' }), false);
   assert.equal(canCreateOrganizerEvent({ ...organizer, must_change_password:true }), false);
   assert.equal(canImportRoster({ access_level:'manager', must_change_password:false }), true);
+});
+
+test('organizers can delete only their own events before any check-in', () => {
+  const organizer = { id:'org-1', access_level:'organizer', must_change_password:false };
+  assert.equal(organizerEventDeleteError(organizer, { created_by:'org-1' }, 0), null);
+  assert.match(organizerEventDeleteError(organizer, { created_by:'org-2' }, 0), /created this event/);
+  assert.match(organizerEventDeleteError(organizer, { created_by:'org-1' }, 2), /system manager/);
+  assert.match(organizerEventDeleteError({ ...organizer, must_change_password:true }, { created_by:'org-1' }, 0), /temporary password/);
+  assert.match(organizerEventDeleteError({ ...organizer, access_level:'manager' }, { created_by:'org-1' }, 0), /event organizer/);
 });
