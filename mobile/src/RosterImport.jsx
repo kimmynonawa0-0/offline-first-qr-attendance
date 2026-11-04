@@ -59,7 +59,7 @@ export default function RosterImport() {
     {preview && <>
       <View style={styles.fileRow}>
         <Ionicons name="document-outline" size={29} color={colors.ink} />
-        <View style={{ flex: 1 }}><Title>{preview.name}</Title><Muted>{preview.rows.length} records</Muted></View>
+        <View style={styles.fileText}><Title>{preview.name}</Title><Muted>{preview.rows.length} records</Muted></View>
       </View>
       <View accessible accessibilityLabel={`${summary.added} new / ${summary.skipped} existing`}>
         <Row>
@@ -131,6 +131,6 @@ export default function RosterImport() {
       <Button secondary disabled={busy} onPress={() => setPreview(null)}>Cancel import</Button>
     </>}
     <ErrorText>{error}</ErrorText>
-    {!!result && <Text accessibilityRole="alert" style={{ color: colors.yellow, fontWeight: '700' }}>{result}</Text>}
+    {!!result && <Text accessibilityRole="alert" style={styles.resultText}>{result}</Text>}
   </Card>;
 }

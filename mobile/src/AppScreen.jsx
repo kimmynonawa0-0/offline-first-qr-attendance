@@ -128,12 +128,12 @@ function RecentActivity({ records, onSeeAll }) {
 function RecordList({ records }) {
   return records.length ? records.map(record => <Card key={record.id}>
     <Title>{record.event}</Title>
-    <Text style={{ color: colors.ink, fontWeight: '700' }}>{record.studentName} ({record.studentId})</Text>
+    <Text style={styles.recordName}>{record.studentName} ({record.studentId})</Text>
     <Muted>{record.date}</Muted>
     <Muted>Time In: {record.timeIn || record.time || displayTime(record.timeInAt || record.recordedAt)}</Muted>
     <Muted>Time Out: {record.timeOut || displayTime(record.timeOutAt)}</Muted>
     <Muted>Methods: {methodLabel(record.timeInMethod || record.method)}{record.timeOutAt ? ` / ${methodLabel(record.timeOutMethod)}` : ''}</Muted>
-    <Text style={{ color: colors.yellow, fontWeight: '800' }}>{record.timeOutAt ? 'COMPLETED' : 'TIMED IN'} / {record.synced ? 'Synced' : 'Saved locally'}</Text>
+    <Text style={styles.recordStatus}>{record.timeOutAt ? 'COMPLETED' : 'TIMED IN'} / {record.synced ? 'Synced' : 'Saved locally'}</Text>
   </Card>) : <Muted>No attendance records yet.</Muted>;
 }
 
@@ -148,8 +148,8 @@ function History({ events, onManage, onViewRecords }) {
 }
 
 function Attendees({ event }) {
-  return event.attendees.length ? event.attendees.map(a => <View key={a.id} style={{ marginBottom: 10 }}>
-    <Text style={{ color: colors.ink, fontWeight: '700' }}>{a.name} ({a.id})</Text>
+  return event.attendees.length ? event.attendees.map(a => <View key={a.id} style={styles.attendee}>
+    <Text style={styles.recordName}>{a.name} ({a.id})</Text>
     <Muted>Time In: {a.time || displayTime(a.timeInAt)} / {methodLabel(a.method)}</Muted>
     <Muted>Time Out: {a.timeOut || displayTime(a.timeOutAt)}</Muted>
   </View>) : <Muted>No students checked in yet.</Muted>;
@@ -291,7 +291,7 @@ export default function AppScreen() {
       }),
     });
   }
-  if (loading || !data) return <SafeAreaView style={styles.safe}><View style={{ padding: 24 }}>
+  if (loading || !data) return <SafeAreaView style={styles.safe}><View style={styles.loadingWrap}>
     <BrandMark />{loading ? <ActivityIndicator color={colors.yellow} /> : <><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
   </View></SafeAreaView>;
   const authScreen = ['login', 'student-login', 'admin-login'].includes(screen);
@@ -449,7 +449,7 @@ export default function AppScreen() {
     <View style={styles.container}>
       {!authScreen && <HeaderBar screen={screen} user={user} online={online} eventId={eventId} adminSession={adminSession} />}
       {!!notice && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setNotice('')} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable>}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <PullToRefreshScrollView
           enabled={canPullToRefresh}
           refreshing={refreshing}

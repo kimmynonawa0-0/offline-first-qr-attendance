@@ -337,4 +337,11 @@ export const styles = StyleSheet.create({
   receiptQr: { padding: 15, backgroundColor: colors.paper, borderRadius: 9, alignItems: 'center', gap: 8 },
   successBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.yellow, borderRadius: 12, minHeight: 60, padding: 10 },
   successText: { color: colors.black, fontFamily: displayFont, fontSize: 20, fontWeight: '900' },
+  recordName: { color: colors.ink, fontWeight: '700' },
+  recordStatus: { color: colors.yellow, fontWeight: '800' },
+  attendee: { marginBottom: 10 },
+  loadingWrap: { padding: 24 },
+  fill: { flex: 1 },
+  fileText: { flex: 1 },
+  resultText: { color: colors.yellow, fontWeight: '700' },
 });

@@ -56,7 +56,7 @@ export default function Scanner({ data, eventId, initialMode = 'time-in', onSave
     {!person && <>
       <Muted>Position the student QR inside the camera preview.</Muted>
       {permission?.granted && !error && active && focused ? <View style={styles.scanFrame}>
-        <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned}
+        <CameraView style={styles.fill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned}
           onMountError={() => setError('Camera unavailable. Check camera permission and try again.')} />
         <ScanCorners />
       </View> : <>
