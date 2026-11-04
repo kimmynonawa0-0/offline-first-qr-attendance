@@ -49,7 +49,7 @@ function HeaderBar({ screen, user, online, eventId, adminSession }) {
   const status = user?.role === 'admin' && !serverSession ? 'LOCAL MODE' : online ? 'ONLINE' : 'OFFLINE';
   return <View style={styles.header}>
     <View style={styles.headerLeading}>
-      {back && <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => replace(back[0], back[1])} style={styles.headerBack}>
+      {back && <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={6} onPress={() => replace(back[0], back[1])} style={({ pressed }) => [styles.headerBack, pressed && styles.iconPressed]}>
         <Ionicons name="arrow-back" size={24} color={colors.ink} />
       </Pressable>}
       {screen === 'admin-home' ? <BrandMark compact /> : <Text style={styles.pageTitle}>{pageTitles[screen] || 'NORWEScan'}</Text>}

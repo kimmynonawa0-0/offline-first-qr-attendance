@@ -122,12 +122,15 @@ export function Button({ children, onPress, icon, secondary = false, purple = fa
     accessibilityState={{ disabled }}
     disabled={disabled}
     onPress={onPress}
-    style={({ pressed }) => [
+    android_ripple={{ color: primary ? 'rgba(0,0,0,0.12)' : 'rgba(255,210,26,0.16)', borderless: false }}
+    style={({ pressed, hovered }) => [
       styles.button,
       secondary && styles.buttonSecondary,
       danger && styles.buttonDanger,
       purple && styles.buttonPrimary,
-      (pressed || disabled) && styles.buttonMuted,
+      hovered && !disabled && styles.buttonHover,
+      pressed && !disabled && styles.buttonPressed,
+      disabled && styles.buttonDisabled,
     ]}
   >
     {primary
@@ -143,7 +146,7 @@ export function Button({ children, onPress, icon, secondary = false, purple = fa
 }
 
 export function LinkButton({ children, onPress, disabled }) {
-  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.linkHit, pressed && styles.buttonMuted]}>
+  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} hitSlop={6} style={({ pressed }) => [styles.linkHit, pressed && !disabled && styles.linkPressed, disabled && styles.buttonDisabled]}>
     <Text style={styles.link}>{children}</Text>
   </Pressable>;
 }
@@ -236,7 +239,7 @@ export const styles = StyleSheet.create({
   container: { width: '100%', maxWidth: 650, alignSelf: 'center', flex: 1, backgroundColor: colors.background },
   header: { minHeight: 62, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.lineSoft, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerLeading: { flexDirection: 'row', alignItems: 'center', minWidth: 0, flex: 1, gap: 10 },
-  headerBack: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  headerBack: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   pageTitle: { color: colors.ink, fontSize: type.title, lineHeight: 23, fontWeight: '700' },
   brand: { fontWeight: '900', fontSize: 19, color: colors.yellow },
   badge: { color: colors.yellow, backgroundColor: colors.badgeSurface, borderWidth: 1, borderColor: colors.badgeBorder, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.pill, fontSize: type.eyebrow, letterSpacing: 0.8, fontWeight: '800' },
@@ -270,6 +273,11 @@ export const styles = StyleSheet.create({
   buttonSecondary: { paddingHorizontal: space.lg, backgroundColor: colors.inputDisabled, borderWidth: 1, borderColor: colors.controlBorder },
   buttonDanger: { paddingHorizontal: space.lg, backgroundColor: colors.dangerSurface, borderWidth: 1, borderColor: colors.dangerBorder },
   buttonMuted: { opacity: 0.55 },
+  buttonHover: { opacity: 0.92 },
+  buttonPressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+  buttonDisabled: { opacity: 0.45 },
+  iconPressed: { backgroundColor: colors.lineSubtle, opacity: 0.9 },
+  linkPressed: { opacity: 0.7 },
   buttonText: { color: colors.onAccent, fontSize: type.body, fontWeight: '700', textAlign: 'center' },
   buttonTextPrimary: { fontFamily: displayFont, fontWeight: '900', letterSpacing: 0.4, textTransform: 'uppercase' },
   buttonTextSecondary: { color: colors.ink },
