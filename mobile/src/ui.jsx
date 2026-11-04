@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { SlideInDown } from 'react-native-reanimated';
+import Animated, { SlideInDown, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -211,6 +211,30 @@ export function Field({ label, value, onChangeText, password = false, newPasswor
   </View>;
 }
 
+function Skeleton({ style }) {
+  const opacity = useSharedValue(0.45);
+  useEffect(() => {
+    opacity.value = withRepeat(withTiming(0.85, { duration: 900 }), -1, true);
+  }, [opacity]);
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View style={[styles.skeleton, animatedStyle, style]} />;
+}
+
+export function LoadingScreen() {
+  return <View accessibilityRole="progressbar" accessibilityLabel="Loading saved data" style={styles.loadingSkeleton}>
+    <BrandMark />
+    <View style={styles.skeletonCard}>
+      <Skeleton style={styles.skeletonTitle} />
+      <Skeleton style={styles.skeletonLine} />
+      <Skeleton style={styles.skeletonLineShort} />
+    </View>
+    <View style={styles.skeletonCard}>
+      <Skeleton style={styles.skeletonTitleShort} />
+      <Skeleton style={styles.skeletonLine} />
+    </View>
+  </View>;
+}
+
 export function Card({ children, admin = false }) { return <View style={[styles.card, admin && styles.adminCard]}>{children}</View>; }
 export function Heading({ children }) { return <Text style={styles.heading}>{children}</Text>; }
 export function Title({ children }) { return <Text style={styles.title}>{children}</Text>; }
@@ -391,6 +415,13 @@ export const styles = StyleSheet.create({
   recordStatus: { color: colors.yellow, fontWeight: '800' },
   attendee: { marginBottom: 10 },
   loadingWrap: { padding: 24 },
+  loadingSkeleton: { gap: space.lg },
+  skeletonCard: { padding: space.lg, gap: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: radius.lg },
+  skeleton: { backgroundColor: colors.lineSubtle, borderRadius: radius.sm, minHeight: 12 },
+  skeletonTitle: { width: '55%', height: 18 },
+  skeletonTitleShort: { width: '40%', height: 18 },
+  skeletonLine: { width: '90%', height: 13 },
+  skeletonLineShort: { width: '70%', height: 13 },
   fill: { flex: 1 },
   fileText: { flex: 1 },
   resultText: { color: colors.yellow, fontWeight: '700' },

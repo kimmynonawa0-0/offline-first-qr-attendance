@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { eventForToday, eventsForToday, sortEventsByDate } from './today-event.mjs';
@@ -19,7 +19,7 @@ import { createOrganizerEvent, deleteOrganizerEvent, downloadOrganizerBootstrap,
 import { getOfflineCredential } from './offline-auth.mjs';
 import { serverRefreshScope } from './server-refresh.mjs';
 import PullToRefreshScrollView from './PullToRefreshScrollView';
-import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
+import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, LoadingScreen, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'event', 'event-records', 'history', 'scanner', 'receipt', 'roster-import'];
 const studentScreens = ['student-home', 'records', 'profile'];
@@ -293,7 +293,7 @@ export default function AppScreen() {
     });
   }
   if (loading || !data) return <SafeAreaView style={styles.safe}><View style={styles.loadingWrap}>
-    <BrandMark />{loading ? <ActivityIndicator color={colors.yellow} /> : <><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
+    {loading ? <LoadingScreen /> : <><BrandMark /><ErrorText>{storageError}</ErrorText><Button onPress={load}>Retry loading</Button></>}
   </View></SafeAreaView>;
   const authScreen = ['login', 'student-login', 'admin-login'].includes(screen);
   if (startupRoute && ['scanner', 'receipt'].includes(screen)) return focused ? <Redirect href={`/${startupRoute}`} /> : null;
