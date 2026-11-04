@@ -62,7 +62,14 @@ function HeaderBar({ screen, user, online, eventId, adminSession }) {
 }
 
 function NavItem({ active, icon, label, onPress }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.navItem}>
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    accessibilityState={{ selected: Boolean(active) }}
+    hitSlop={4}
+    onPress={onPress}
+    style={({ pressed }) => [styles.navItem, active && styles.navItemActive, pressed && styles.navItemPressed]}
+  >
     <Ionicons name={icon} size={23} color={active ? colors.yellow : colors.muted} />
     <Text style={[styles.navText, active && styles.navTextActive]}>{label}</Text>
   </Pressable>;
