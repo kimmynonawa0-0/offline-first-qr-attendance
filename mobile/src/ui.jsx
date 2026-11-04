@@ -145,6 +145,30 @@ export function Button({ children, onPress, icon, secondary = false, purple = fa
   </Pressable>;
 }
 
+export function SegmentedControl({ options, value, onChange, disabled = false }) {
+  return <View style={styles.segment}>
+    {options.map(option => {
+      const selected = option.value === value;
+      return <Pressable
+        key={option.value}
+        accessibilityRole="button"
+        accessibilityLabel={option.label}
+        accessibilityState={{ selected, disabled }}
+        disabled={disabled}
+        onPress={() => onChange(option.value)}
+        style={({ pressed }) => [
+          styles.segmentItem,
+          selected && styles.segmentItemActive,
+          pressed && !selected && !disabled && styles.segmentItemPressed,
+          disabled && styles.buttonDisabled,
+        ]}
+      >
+        <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>{option.label}</Text>
+      </Pressable>;
+    })}
+  </View>;
+}
+
 export function LinkButton({ children, onPress, disabled }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} hitSlop={6} style={({ pressed }) => [styles.linkHit, pressed && !disabled && styles.linkPressed, disabled && styles.buttonDisabled]}>
     <Text style={styles.link}>{children}</Text>
@@ -287,6 +311,12 @@ export const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   iconPressed: { backgroundColor: colors.lineSubtle, opacity: 0.9 },
   linkPressed: { opacity: 0.7 },
+  segment: { flexDirection: 'row', padding: 4, gap: 4, backgroundColor: colors.inputDisabled, borderWidth: 1, borderColor: colors.line, borderRadius: radius.md },
+  segmentItem: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
+  segmentItemActive: { backgroundColor: colors.yellow },
+  segmentItemPressed: { backgroundColor: colors.lineSubtle },
+  segmentText: { color: colors.muted, fontSize: type.body, fontWeight: '700' },
+  segmentTextActive: { color: colors.onAccent, fontWeight: '800' },
   buttonText: { color: colors.onAccent, fontSize: type.body, fontWeight: '700', textAlign: 'center' },
   buttonTextPrimary: { fontFamily: displayFont, fontWeight: '900', letterSpacing: 0.4, textTransform: 'uppercase' },
   buttonTextSecondary: { color: colors.ink },
@@ -345,7 +375,7 @@ export const styles = StyleSheet.create({
   rosterId: { flex: 1, color: colors.ink, fontSize: 12 },
   rosterName: { flex: 1.5, color: colors.ink, fontSize: 12 },
   rosterStatus: { flex: 0.8, color: colors.yellow, fontSize: 12 },
-  scanFrame: { height: 320, overflow: 'hidden', borderRadius: 14, backgroundColor: colors.scanSurface },
+  scanFrame: { width: '100%', aspectRatio: 1, maxHeight: 420, overflow: 'hidden', borderRadius: radius.lg, backgroundColor: colors.scanSurface },
   scanCorner: { position: 'absolute', width: 36, height: 36, borderColor: colors.yellow },
   scanTopLeft: { top: 24, left: 24, borderTopWidth: 4, borderLeftWidth: 4 },
   scanTopRight: { top: 24, right: 24, borderTopWidth: 4, borderRightWidth: 4 },

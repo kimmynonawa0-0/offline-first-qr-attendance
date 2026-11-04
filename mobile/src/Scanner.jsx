@@ -3,7 +3,7 @@ import { AppState, Linking, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useIsFocused } from 'expo-router';
-import { Button, Card, ErrorText, Field, Muted, ScanCorners, styles, Title } from './ui';
+import { Button, Card, ErrorText, Field, Muted, ScanCorners, SegmentedControl, styles, Title } from './ui';
 import { attendanceStatus } from './model.mjs';
 
 const haptic = action => { action().catch(() => {}); };
@@ -56,8 +56,12 @@ export default function Scanner({ data, eventId, initialMode = 'time-in', onSave
   return <Card admin>
     <Title>{mode === 'time-in' ? 'Time In scanning' : 'Time Out scanning'}</Title>
     <Muted>Select a mode before scanning. A repeated scan will not change a completed action.</Muted>
-    <Button secondary={mode !== 'time-in'} disabled={busy || Boolean(person)} onPress={() => { haptic(() => Haptics.selectionAsync()); setMode('time-in'); setError(''); }}>Time In</Button>
-    <Button secondary={mode !== 'time-out'} disabled={busy || Boolean(person)} onPress={() => { haptic(() => Haptics.selectionAsync()); setMode('time-out'); setError(''); }}>Time Out</Button>
+    <SegmentedControl
+      options={[{ value: 'time-in', label: 'Time In' }, { value: 'time-out', label: 'Time Out' }]}
+      value={mode}
+      disabled={busy || Boolean(person)}
+      onChange={next => { haptic(() => Haptics.selectionAsync()); setMode(next); setError(''); }}
+    />
     {!person && <>
       <Muted>Position the student QR inside the camera preview.</Muted>
       {permission?.granted && !error && active && focused ? <View style={styles.scanFrame}>
