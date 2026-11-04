@@ -22,6 +22,32 @@ export const colors = {
   background: '#070909',
 };
 
+export const space = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
+};
+
+export const radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 22,
+  pill: 999,
+};
+
+export const type = {
+  eyebrow: 10,
+  caption: 12,
+  body: 15,
+  title: 18,
+  heading: 26,
+  display: 34,
+};
+
 const displayFont = Platform.select({
   ios: 'AvenirNextCondensed-Bold',
   android: 'sans-serif-condensed',
