@@ -22,83 +22,84 @@ export function LoginScreen({ onLogin }) {
     if (!native) setWebCredential(account, password);
     await onLogin(account);
   }
+  async function signIn() {
+    if (lock.current) return;
+    lock.current = true; setBusy(true); setError('');
+    try {
+      const localAdmin = data.admins.some(account => account.id === identifier.trim());
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+      if (!native && !apiUrl) {
+        throw new Error('The PWA is not connected to the attendance server. Configure its API URL and try again.');
+      }
+      if (native && online === false) {
+        const account = await authenticateOffline(data, identifier, password, SecureStore);
+        if (account.role === 'admin') {
+          setAdminAuthIssue('Offline sign-in. Organizer uploads will reauthenticate when the server is reachable.');
+        }
+        setNotice('Signed in offline. Your saved records remain on this device until you sync.');
+        await finishLogin(account); return;
+      }
+      if (apiUrl) {
+        try {
+          const remote = await loginStudentRemotely(identifier, password, apiUrl, fetch,
+            adminSession?.id === identifier.trim() ? adminSession.token : undefined);
+          if (remote.role === 'admin') {
+            if (remote.accessLevel === 'manager') {
+              throw new Error('System manager accounts use the management website, not the scanning app.');
+            }
+            if (native) {
+              try { await saveOfflineCredential(SecureStore, 'admin', remote.id, password); }
+              catch { setNotice('Signed in, but this device could not protect an offline password. Offline sign-in is not enabled.'); }
+            }
+            let bootstrap = null;
+            let bootstrapError = null;
+            if (!remote.mustChangePassword) {
+              try { bootstrap = await downloadOrganizerBootstrap(remote.sessionToken, apiUrl); }
+              catch (error) { bootstrapError = error; }
+            }
+            const next = await update(current => cacheRemoteAdminPassword(
+              bootstrap ? mergeOrganizerBootstrap(current, bootstrap) : current,
+              remote.id, undefined, { name: remote.name, section: remote.section, mustChangePassword: remote.mustChangePassword },
+            ));
+            await setAdminSession({ id: remote.id, role: 'admin', token: remote.sessionToken });
+            setAdminAuthIssue('');
+            if (bootstrapError) setNotice(`Signed in. Assigned events could not be downloaded: ${bootstrapError.message}`);
+            await finishLogin(sessionFor(next.admins.find(account => account.id === remote.id), 'admin')); return;
+          }
+          if (localAdmin) throw new Error('This ID is not registered as an organizer on the server.');
+          if (native) {
+            try { await saveOfflineCredential(SecureStore, 'student', remote.id, password); }
+            catch { setNotice('Signed in, but this device could not protect an offline password. Offline sign-in is not enabled.'); }
+          }
+          const next = await update(current => cacheRemoteStudent(current, remote));
+          await setAdminSession({ id: remote.id, role: 'student', token: remote.sessionToken });
+          await finishLogin(sessionFor(next.students.find(account => account.id === remote.id), 'student')); return;
+        } catch (remoteError) {
+          if (native && isRetryableAuthFailure(remoteError)) {
+            const account = await authenticateOffline(data, identifier, password, SecureStore);
+            if (account.role === 'admin') setAdminAuthIssue(remoteError.message);
+            setNotice("Server unavailable. Signed in with this device's protected offline credential.");
+            await finishLogin(account); return;
+          }
+          throw remoteError;
+        }
+      }
+      if (native) {
+        const account = await authenticateOffline(data, identifier, password, SecureStore);
+        await finishLogin(account); return;
+      }
+      throw new Error('Connect to the attendance server before signing in to the PWA.');
+    } catch (e) { setError(e.message); }
+    finally { lock.current = false; setBusy(false); }
+  }
   return <>
     <UniversityBanner />
     <Card>
-      <Field label="Student ID" autoCapitalize="none" autoCorrect={false} value={identifier} onChangeText={setIdentifier} />
-      <Field label="Password" value={password} onChangeText={setPassword} password />
+      <Field label="Student ID" username value={identifier} onChangeText={setIdentifier} />
+      <Field label="Password" password value={password} onChangeText={setPassword} returnKeyType="go" enterKeyHint="go" onSubmitEditing={signIn} />
       <LinkButton onPress={() => setHelp(true)}>Forgot password?</LinkButton>
       <ErrorText>{error}</ErrorText>
-      <Button disabled={busy} onPress={async () => {
-        if (lock.current) return;
-        lock.current = true; setBusy(true); setError('');
-        try {
-          const localAdmin = data.admins.some(account => account.id === identifier.trim());
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-          if (!native && !apiUrl) {
-            throw new Error('The PWA is not connected to the attendance server. Configure its API URL and try again.');
-          }
-          if (native && online === false) {
-            const account = await authenticateOffline(data, identifier, password, SecureStore);
-            if (account.role === 'admin') {
-              setAdminAuthIssue('Offline sign-in. Organizer uploads will reauthenticate when the server is reachable.');
-            }
-            setNotice('Signed in offline. Your saved records remain on this device until you sync.');
-            await finishLogin(account); return;
-          }
-          if (apiUrl) {
-            try {
-              const remote = await loginStudentRemotely(identifier, password, apiUrl, fetch,
-                adminSession?.id === identifier.trim() ? adminSession.token : undefined);
-              if (remote.role === 'admin') {
-                if (remote.accessLevel === 'manager') {
-                  throw new Error('System manager accounts use the management website, not the scanning app.');
-                }
-                if (native) {
-                  try { await saveOfflineCredential(SecureStore, 'admin', remote.id, password); }
-                  catch { setNotice('Signed in, but this device could not protect an offline password. Offline sign-in is not enabled.'); }
-                }
-                let bootstrap = null;
-                let bootstrapError = null;
-                if (!remote.mustChangePassword) {
-                  try { bootstrap = await downloadOrganizerBootstrap(remote.sessionToken, apiUrl); }
-                  catch (error) { bootstrapError = error; }
-                }
-                const next = await update(current => cacheRemoteAdminPassword(
-                  bootstrap ? mergeOrganizerBootstrap(current, bootstrap) : current,
-                  remote.id, undefined, { name: remote.name, section: remote.section, mustChangePassword: remote.mustChangePassword },
-                ));
-                await setAdminSession({ id: remote.id, role: 'admin', token: remote.sessionToken });
-                setAdminAuthIssue('');
-                if (bootstrapError) setNotice(`Signed in. Assigned events could not be downloaded: ${bootstrapError.message}`);
-                await finishLogin(sessionFor(next.admins.find(account => account.id === remote.id), 'admin')); return;
-              }
-              if (localAdmin) throw new Error('This ID is not registered as an organizer on the server.');
-              if (native) {
-                try { await saveOfflineCredential(SecureStore, 'student', remote.id, password); }
-                catch { setNotice('Signed in, but this device could not protect an offline password. Offline sign-in is not enabled.'); }
-              }
-              const next = await update(current => cacheRemoteStudent(current, remote));
-              await setAdminSession({ id: remote.id, role: 'student', token: remote.sessionToken });
-              await finishLogin(sessionFor(next.students.find(account => account.id === remote.id), 'student')); return;
-            } catch (remoteError) {
-              if (native && isRetryableAuthFailure(remoteError)) {
-                const account = await authenticateOffline(data, identifier, password, SecureStore);
-                if (account.role === 'admin') setAdminAuthIssue(remoteError.message);
-                setNotice("Server unavailable. Signed in with this device's protected offline credential.");
-                await finishLogin(account); return;
-              }
-              throw remoteError;
-            }
-          }
-          if (native) {
-            const account = await authenticateOffline(data, identifier, password, SecureStore);
-            await finishLogin(account); return;
-          }
-          throw new Error('Connect to the attendance server before signing in to the PWA.');
-        } catch (e) { setError(e.message); }
-        finally { lock.current = false; setBusy(false); }
-      }}>{busy ? 'Signing in...' : 'LOG IN'}</Button>
+      <Button disabled={busy} onPress={signIn}>{busy ? 'Signing in...' : 'LOG IN'}</Button>
       <Muted>Use the account provided by your faculty. On your first login, your section is your temporary password.</Muted>
     </Card>
     {help && <ModalFrame title="Account help" onClose={() => setHelp(false)}>
@@ -122,8 +123,8 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
     <Heading>Choose your password</Heading>
     <Muted>Your section password is temporary. Create one with at least 12 characters that is not your section.</Muted>
     {!native && !hasWebCredential && <Field label="Current password" password value={currentPassword} onChangeText={setCurrentPassword} />}
-    <Field label="New password" password value={password} onChangeText={setPassword} />
-    <Field label="Confirm new password" password value={confirm} onChangeText={setConfirm} />
+    <Field label="New password" password newPassword value={password} onChangeText={setPassword} />
+    <Field label="Confirm new password" password newPassword value={confirm} onChangeText={setConfirm} />
     <ErrorText>{error}</ErrorText>
     <Button disabled={busy} onPress={async () => {
       if (lock.current) return;

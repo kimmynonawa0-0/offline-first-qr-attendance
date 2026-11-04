@@ -151,11 +151,13 @@ export function LinkButton({ children, onPress, disabled }) {
   </Pressable>;
 }
 
-export function Field({ label, value, onChangeText, password = false, email = false, editable = true, placeholder, ...props }) {
+export function Field({ label, value, onChangeText, password = false, newPassword = false, email = false, username = false, editable = true, placeholder, onFocus, onBlur, ...props }) {
   const [visible, setVisible] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const identity = password || email || username;
   return <View style={styles.field}>
     <Text style={styles.label}>{label}</Text>
-    <View style={[styles.inputRow, !editable && styles.inputDisabled]}>
+    <View style={[styles.inputRow, focused && styles.inputRowFocused, !editable && styles.inputDisabled]}>
       <TextInput
         accessibilityLabel={label}
         value={value}
@@ -163,15 +165,21 @@ export function Field({ label, value, onChangeText, password = false, email = fa
         editable={editable}
         placeholder={placeholder}
         placeholderTextColor={colors.placeholder}
-        autoCapitalize={email || password ? 'none' : 'sentences'}
-        autoCorrect={!email && !password}
+        autoCapitalize={identity ? 'none' : 'sentences'}
+        autoCorrect={!identity}
         keyboardType={email ? 'email-address' : 'default'}
+        autoComplete={password ? (newPassword ? 'new-password' : 'current-password') : email ? 'email' : username ? 'username' : 'off'}
+        textContentType={password ? (newPassword ? 'newPassword' : 'password') : email ? 'emailAddress' : username ? 'username' : 'none'}
+        returnKeyType="next"
+        enterKeyHint="next"
         secureTextEntry={password && !visible}
         selectionColor={colors.yellow}
+        onFocus={event => { setFocused(true); onFocus?.(event); }}
+        onBlur={event => { setFocused(false); onBlur?.(event); }}
         style={[styles.input, !editable && { color: colors.muted }]}
         {...props}
       />
-      {password && <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'} onPress={() => setVisible(!visible)} style={styles.passwordToggle}>
+      {password && <Pressable accessibilityRole="button" accessibilityLabel={visible ? 'Hide password' : 'Show password'} hitSlop={4} onPress={() => setVisible(!visible)} style={styles.passwordToggle}>
         <Text style={styles.link}>{visible ? 'Hide' : 'Show'}</Text>
       </Pressable>}
     </View>
@@ -264,6 +272,7 @@ export const styles = StyleSheet.create({
   label: { color: colors.paper, fontSize: type.caption, letterSpacing: 0.4, fontWeight: '700', marginBottom: 6 },
   field: { marginBottom: 10 },
   inputRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.inputBorder, borderRadius: radius.md, backgroundColor: colors.inputSurface },
+  inputRowFocused: { borderColor: colors.yellow },
   inputDisabled: { backgroundColor: colors.inputDisabled },
   input: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 13, fontSize: 16, color: colors.ink },
   passwordToggle: { padding: 14 },
