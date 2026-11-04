@@ -7,6 +7,7 @@ import { currentTwelveHourTime, formatTwelveHourTime, parseTwelveHourTime } from
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
+import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import QRCode from 'react-native-qrcode-svg';
 import { useApp } from './state';
@@ -424,7 +425,10 @@ export default function AppScreen() {
     const id = action === 'time-in'
       ? Crypto.randomUUID()
       : attendanceStatus(data, eventId, person.id).record?.id;
-    run(() => update(d => checkIn(d, user, eventId, person, method, id, action)), () => replace('receipt', { eventId, recordId: id, scanMode: action }));
+    run(() => update(d => checkIn(d, user, eventId, person, method, id, action)), () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      replace('receipt', { eventId, recordId: id, scanMode: action });
+    });
   }} />;
   else if (screen === 'receipt' && receipt) content = <>
     <View style={styles.receiptPreview}>
