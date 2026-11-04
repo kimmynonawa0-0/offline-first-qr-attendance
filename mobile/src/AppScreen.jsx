@@ -452,7 +452,12 @@ export default function AppScreen() {
     <StatusBar style="light" />
     <View style={styles.container}>
       {!authScreen && <HeaderBar screen={screen} user={user} online={online} eventId={eventId} adminSession={adminSession} />}
-      {!!notice && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setNotice('')} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable>}
+      {!!notice && <View style={styles.notice}>
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.noticeText}>{notice}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" hitSlop={8} onPress={() => setNotice('')} style={({ pressed }) => [styles.noticeClose, pressed && styles.buttonMuted]}>
+          <Ionicons name="close" size={18} color={colors.warningText} />
+        </Pressable>
+      </View>}
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <PullToRefreshScrollView
           enabled={canPullToRefresh}

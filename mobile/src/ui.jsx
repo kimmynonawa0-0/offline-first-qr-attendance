@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, { SlideInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -239,7 +240,7 @@ export function ModalFrame({ title, onClose, children, busy = false, dismissOnBa
         style={StyleSheet.absoluteFill}
       />}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
-        <View style={styles.modalCard}>
+        <Animated.View entering={SlideInDown.duration(220)} style={styles.modalCard}>
           <View
             accessibilityRole={dismissOnBackdrop ? 'button' : undefined}
             accessibilityLabel={dismissOnBackdrop ? 'Swipe down or tap to go back' : undefined}
@@ -260,7 +261,7 @@ export function ModalFrame({ title, onClose, children, busy = false, dismissOnBa
             {children}
             {showClose && <LinkButton disabled={busy} onPress={onClose}>Close</LinkButton>}
           </ScrollView>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   </Modal>;
@@ -339,8 +340,9 @@ export const styles = StyleSheet.create({
   modalContent: { padding: 20, gap: 10 },
   qr: { alignItems: 'center', padding: 20, backgroundColor: colors.paper, borderRadius: 15, gap: 12 },
   qrText: { color: colors.qrInk, fontWeight: '700' },
-  notice: { paddingHorizontal: 18, paddingVertical: 12, backgroundColor: colors.warningSurface, borderBottomWidth: 1, borderBottomColor: colors.warningBorder },
-  noticeText: { color: colors.warningText, fontWeight: '700' },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingLeft: 18, paddingRight: space.sm, paddingVertical: 10, backgroundColor: colors.warningSurface, borderBottomWidth: 1, borderBottomColor: colors.warningBorder },
+  noticeText: { flex: 1, color: colors.warningText, fontWeight: '700', fontSize: 14, lineHeight: 20 },
+  noticeClose: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 16 },
   separator: { height: 1, backgroundColor: colors.line, marginVertical: 8 },
   screenLead: { paddingVertical: 5, gap: 4 },
   greeting: { color: colors.muted, fontSize: type.body, lineHeight: 20, fontWeight: '500' },
