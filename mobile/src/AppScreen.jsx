@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { eventForToday } from './today-event.mjs';
+import { eventForToday, sortEventsByDate } from './today-event.mjs';
 import { currentTwelveHourTime, formatTwelveHourTime, parseTwelveHourTime } from './event-time.mjs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,14 +13,14 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { attendanceStatus, checkIn, createEvent, deleteEvent, eventAttendanceCount, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { attendanceStatus, checkIn, createEvent, deleteEvent, eventAttendanceCount, eventAttendanceRows, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
 import { createOrganizerEvent, deleteOrganizerEvent, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
 import { serverRefreshScope } from './server-refresh.mjs';
 import PullToRefreshScrollView from './PullToRefreshScrollView';
 import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
 
-const adminScreens = ['admin-home', 'admin-records', 'event', 'history', 'scanner', 'receipt', 'roster-import'];
+const adminScreens = ['admin-home', 'admin-records', 'event', 'event-records', 'history', 'scanner', 'receipt', 'roster-import'];
 const studentScreens = ['student-home', 'records', 'profile'];
 const go = (page, params = {}) => router.push({ pathname: '/[page]', params: { page, ...params } });
 const replace = (page, params = {}) => router.replace({ pathname: '/[page]', params: { page, ...params } });
@@ -31,6 +31,7 @@ const pageTitles = {
   records: 'Attendance records',
   profile: 'Profile',
   event: 'Event details',
+  'event-records': 'Event attendance',
   history: 'Events',
   'admin-records': 'Attendance records',
   'roster-import': 'Upload section roster',
@@ -40,9 +41,10 @@ const pageTitles = {
 
 function HeaderBar({ screen, user, online, eventId, adminSession }) {
   const back = ['records', 'profile'].includes(screen) ? ['student-home']
-    : ['admin-records', 'history', 'event', 'roster-import'].includes(screen) ? ['admin-home']
-      : ['scanner', 'receipt'].includes(screen) ? ['event', { eventId }]
-        : null;
+    : screen === 'event-records' ? ['admin-records']
+      : ['admin-records', 'history', 'event', 'roster-import'].includes(screen) ? ['admin-home']
+        : ['scanner', 'receipt'].includes(screen) ? ['event', { eventId }]
+          : null;
   const serverSession = user?.role === 'admin' && adminSession?.id === user.id && Boolean(adminSession.token);
   const status = user?.role === 'admin' && !serverSession ? 'LOCAL MODE' : online ? 'ONLINE' : 'OFFLINE';
   return <View style={styles.header}>
@@ -96,6 +98,19 @@ function EventRow({ event, onPress }) {
   </Pressable>;
 }
 
+function EventListRow({ event, detail, onPress }) {
+  const when = event.date === localDate() ? 'Today' : event.date;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${event.name}`} onPress={onPress} style={({ pressed }) => [styles.eventRow, pressed && styles.buttonMuted]}>
+    <View style={styles.eventIcon}><Ionicons name="calendar-outline" size={23} color={colors.yellow} /></View>
+    <View style={styles.eventText}>
+      <Text style={styles.eventLabel}>{when} / {formatTwelveHourTime(event.time)}</Text>
+      <Text numberOfLines={2} style={styles.eventName}>{event.name}</Text>
+      {detail ? <Text style={styles.eventLabel}>{detail}</Text> : null}
+    </View>
+    <Ionicons name="chevron-forward" size={20} color={colors.ink} />
+  </Pressable>;
+}
+
 function RecentActivity({ records, onSeeAll }) {
   return <Card>
     <View style={styles.activityHeader}><Title>Recent activity</Title><LinkButton onPress={onSeeAll}>See all</LinkButton></View>
@@ -122,14 +137,12 @@ function RecordList({ records }) {
   </Card>) : <Muted>No attendance records yet.</Muted>;
 }
 
-function History({ events, onManage }) {
-  const [expanded, setExpanded] = useState(null);
+function History({ events, onManage, onViewRecords }) {
   return <>{events.length === 0 && <Muted>No events found.</Muted>}
-    {[...events].reverse().map(event => <Card key={event.id}><EventSummary event={event} />
+    {events.map(event => <Card key={event.id}><EventSummary event={event} />
       <Muted>{event.attendees.length} students checked in</Muted>
       <Button secondary onPress={() => onManage(event.id)}>Manage event</Button>
-      <LinkButton onPress={() => setExpanded(expanded === event.id ? null : event.id)}>{expanded === event.id ? 'Hide attendees' : 'Show attendees'}</LinkButton>
-      {expanded === event.id && <Attendees event={event} />}
+      <LinkButton onPress={() => onViewRecords(event.id)}>View attendance</LinkButton>
     </Card>)}
   </>;
 }
@@ -140,6 +153,20 @@ function Attendees({ event }) {
     <Muted>Time In: {a.time || displayTime(a.timeInAt)} / {methodLabel(a.method)}</Muted>
     <Muted>Time Out: {a.timeOut || displayTime(a.timeOutAt)}</Muted>
   </View>) : <Muted>No students checked in yet.</Muted>;
+}
+
+function EventAttendanceList({ rows }) {
+  return rows.length ? <Card><Title>Students scanned</Title>
+    {rows.map(row => <View key={row.studentId} style={styles.activityRow}>
+      <Ionicons name="person-circle-outline" size={24} color={colors.paper} />
+      <View style={styles.activityText}>
+        <Text numberOfLines={1} style={styles.activityName}>{row.studentName} / {row.studentId}</Text>
+        <Text style={styles.activityTime}>In: {row.timeIn || displayTime(row.timeInAt, '—')} / Out: {row.timeOutAt ? (row.timeOut || displayTime(row.timeOutAt)) : '—'}</Text>
+        <Text style={styles.activityTime}>{row.timeOutAt ? 'Completed' : 'Timed in'}{row.synced === false ? ' / Saved locally' : row.synced === true ? ' / Synced' : ''}</Text>
+      </View>
+      <Text style={styles.activityStatus}>{row.timeOutAt ? 'DONE' : 'IN'}</Text>
+    </View>)}
+  </Card> : <Card><Muted>No students have been scanned for this event yet.</Muted></Card>;
 }
 
 export default function AppScreen() {
@@ -340,13 +367,31 @@ export default function AppScreen() {
   </>;
   else if (screen === 'roster-import') content = <RosterImport />;
   else if (screen === 'admin-records') content = <>
-    <RecordList records={data.records} />
+    <Card><Title>Records by event</Title><Muted>Choose an event to review the students scanned for it. Events are newest first.</Muted></Card>
+    {assignedEvents.length === 0
+      ? <Card><Muted>No events are available on this device yet.</Muted></Card>
+      : sortEventsByDate(assignedEvents).map(event => {
+        const scanned = eventAttendanceCount(data, event.id);
+        return <EventListRow key={event.id} event={event}
+          detail={`${event.location} / ${scanned} student${scanned === 1 ? '' : 's'} scanned`}
+          onPress={() => go('event-records', { eventId: event.id })} />;
+      })}
   </>;
   else if (screen === 'history') content = <>
     <Button icon="add-outline" onPress={() => setCreateEventOpen(true)}>Create event</Button>
-    <History events={assignedEvents} onManage={id => go('event', { eventId: id })} />
+    <History events={sortEventsByDate(assignedEvents)} onManage={id => go('event', { eventId: id })}
+      onViewRecords={id => go('event-records', { eventId: id })} />
   </>;
-  else if (screen === 'event' && event) content = <>
+  else if (screen === 'event-records' && event) {
+    const scanned = eventAttendanceCount(data, event.id);
+    content = <>
+      <Card admin><EventSummary event={event} />
+        <Muted>{scanned} student{scanned === 1 ? '' : 's'} scanned</Muted>
+      </Card>
+      <EventAttendanceList rows={eventAttendanceRows(data, event.id)} />
+      <Button secondary onPress={() => go('event', { eventId: event.id })}>Open event tools</Button>
+    </>;
+  } else if (screen === 'event' && event) content = <>
     <Card admin><EventSummary event={event} />
       <Button purple onPress={() => go('scanner', { eventId, scanMode: 'time-in' })}>Scan Time In</Button>
       <Button secondary onPress={() => go('scanner', { eventId, scanMode: 'time-out' })}>Scan Time Out</Button>

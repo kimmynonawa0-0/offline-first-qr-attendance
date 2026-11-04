@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { eventForToday } from './today-event.mjs';
+import { eventForToday, sortEventsByDate } from './today-event.mjs';
 import { localDate } from './model.mjs';
 
 test('selects the latest event that has started today', () => {
@@ -25,4 +25,17 @@ test('selects the next event today if none have started and no event if today is
     { id: 'first', date: today, time: '09:00' },
   ], now)?.id, 'first');
   assert.equal(eventForToday([{ id: 'past', date: '2026-10-23', time: '09:00' }], now), null);
+});
+
+test('events are sorted by date and start time', () => {
+  const events = [
+    { id: 'spring', date: '2026-10-25', time: '08:00' },
+    { id: 'late', date: '2026-10-24', time: '13:00' },
+    { id: 'early', date: '2026-10-24', time: '09:00' },
+    { id: 'older', date: '2026-10-23', time: '18:00' },
+  ];
+
+  assert.deepEqual(sortEventsByDate(events).map(event => event.id), ['spring', 'late', 'early', 'older']);
+  assert.deepEqual(sortEventsByDate(events, 'asc').map(event => event.id), ['older', 'early', 'late', 'spring']);
+  assert.deepEqual(events.map(event => event.id), ['spring', 'late', 'early', 'older']);
 });

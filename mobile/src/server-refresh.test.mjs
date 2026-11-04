@@ -8,7 +8,7 @@ test('student home and records refresh student attendance', () => {
 });
 
 test('organizer data screens refresh the assigned bootstrap', () => {
-  for (const screen of ['admin-home', 'admin-records', 'history', 'event', 'scanner']) {
+  for (const screen of ['admin-home', 'admin-records', 'history', 'event', 'event-records', 'scanner']) {
     assert.equal(serverRefreshScope(screen, 'admin'), 'organizer-bootstrap');
   }
 });

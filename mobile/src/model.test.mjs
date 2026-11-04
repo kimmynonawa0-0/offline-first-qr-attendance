@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attendanceStatus, cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, mergeOrganizerAttendance, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
+import { attendanceStatus, cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, eventAttendanceRows, mergeOrganizerAttendance, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -93,6 +93,28 @@ test('organizer attendance refresh merges server records and preserves pending s
   assert.deepEqual(next.events[0].attendees, [{ id: '00456', name: 'Miko Test', time: '11:00', method: 'scan',
     timeInAt: '2026-10-17T03:00:00.000Z', timeOutAt: null, timeOut: '', timeOutMethod: null }]);
   assert.throws(() => mergeOrganizerAttendance(data, [{ id: 'broken' }]), /invalid attendance record/i);
+});
+
+test('event attendance rows group students by event and keep their scan state', () => {
+  const data = { ...ready(), events: [
+    { id: 'e1', name: 'Assembly', attendees: [{ id: '00123', name: 'Juan Dela Cruz', time: '09:00',
+      timeInAt: '2026-10-26T01:00:00.000Z', timeOutAt: '2026-10-26T09:00:00.000Z', timeOut: '17:00', timeOutMethod: 'scan' }] },
+    { id: 'e2', name: 'Other event', attendees: [] },
+  ], records: [
+    { id: 'r1', studentId: '00123', studentName: 'Juan Dela Cruz', eventId: 'e1', recordedAt: '2026-10-26T01:00:00.000Z',
+      timeInAt: '2026-10-26T01:00:00.000Z', timeIn: '09:00', timeInMethod: 'scan', timeOutAt: '2026-10-26T09:00:00.000Z',
+      timeOut: '17:00', timeOutMethod: 'scan', synced: true },
+    { id: 'r2', studentId: '00456', studentName: 'Miko Test', eventId: 'e1', recordedAt: '2026-10-26T02:00:00.000Z',
+      timeInAt: '2026-10-26T02:00:00.000Z', timeIn: '10:00', timeInMethod: 'organizer', synced: false },
+    { id: 'r3', studentId: '00999', studentName: 'Other Student', eventId: 'e2', recordedAt: '2026-10-27T02:00:00.000Z', synced: true },
+  ] };
+  const rows = eventAttendanceRows(data, 'e1');
+  assert.deepEqual(rows.map(row => row.studentId), ['00456', '00123']);
+  assert.equal(rows[0].timeIn, '10:00');
+  assert.equal(rows[0].synced, false);
+  assert.equal(rows[1].timeOut, '17:00');
+  assert.equal(rows[1].timeOutMethod, 'scan');
+  assert.deepEqual(eventAttendanceRows(data, 'missing'), []);
 });
 
 for (const role of ['student', 'admin']) test(`${role} must replace the temporary password without changing identity`, () => {

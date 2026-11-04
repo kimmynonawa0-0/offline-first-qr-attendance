@@ -177,6 +177,42 @@ export function eventAttendanceCount(data, eventId) {
   ]).size;
 }
 
+export function eventAttendanceRows(data, eventId) {
+  const event = data.events.find(item => item.id === eventId);
+  const rows = new Map();
+  for (const attendee of event?.attendees || []) {
+    rows.set(attendee.id, {
+      studentId: attendee.id,
+      studentName: attendee.name,
+      timeInAt: attendee.timeInAt || null,
+      timeIn: attendee.time || '',
+      timeOutAt: attendee.timeOutAt || null,
+      timeOut: attendee.timeOut || '',
+      timeInMethod: attendee.method || '',
+      timeOutMethod: attendee.timeOutMethod || '',
+      synced: null,
+    });
+  }
+  for (const record of data.records.filter(item => item.eventId === eventId)) {
+    if (!record.studentId) continue;
+    const current = rows.get(record.studentId) || {};
+    rows.set(record.studentId, {
+      studentId: record.studentId,
+      studentName: record.studentName || current.studentName || record.studentId,
+      timeInAt: record.timeInAt || record.recordedAt || current.timeInAt || null,
+      timeIn: record.timeIn || record.time || current.timeIn || '',
+      timeOutAt: record.timeOutAt || current.timeOutAt || null,
+      timeOut: record.timeOut || current.timeOut || '',
+      timeInMethod: record.timeInMethod || record.method || current.timeInMethod || '',
+      timeOutMethod: record.timeOutMethod || current.timeOutMethod || '',
+      synced: record.synced === true,
+    });
+  }
+  return [...rows.values()].sort((left, right) =>
+    (right.timeInAt || '').localeCompare(left.timeInAt || '')
+    || left.studentName.localeCompare(right.studentName));
+}
+
 export function deleteEvent(data, user, id) {
   requireAdmin(data, user);
   const event = data.events.find(item => item.id === id);
