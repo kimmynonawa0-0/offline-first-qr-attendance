@@ -1,4 +1,5 @@
 import { scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { organizerSectionAssigneeIds } from './auth.mjs';
 
 export function passwordHash(password, salt) {
   return scryptSync(password, salt, 64).toString('hex');
@@ -49,12 +50,19 @@ export function validateBatch(body) {
   }
 }
 
-export async function saveBatch(client, body, organizerId) {
+export async function saveBatch(client, body, organizer) {
+  const account = typeof organizer === 'string' ? { id: organizer } : organizer;
+  const organizerId = account.id;
   const acceptedRecordIds = [];
   const conflictRecordIds = [];
   const acceptedEventIds = [];
   await client.query('BEGIN');
   try {
+    const sectionOrganizers = account.section && body.events.some(event => event.createdLocally)
+      ? await client.query(`SELECT id, section, access_level, enabled FROM organizers
+        WHERE enabled = TRUE AND access_level = 'organizer' AND section = $1`, [account.section])
+      : { rows: [] };
+    const organizerIds = organizerSectionAssigneeIds(account, sectionOrganizers.rows) || [organizerId];
     for (const person of body.students) {
       await client.query('INSERT INTO students (id, name, section, email) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
         [person.id, person.name, person.section, person.email || '']);
@@ -64,7 +72,9 @@ export async function saveBatch(client, body, organizerId) {
         const inserted = await client.query('INSERT INTO events (id, name, location, date, time, created_by) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING RETURNING id',
           [event.id, event.name, event.location, event.date, event.time, organizerId]);
         if (inserted.rows[0]?.id) {
-          await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [event.id, organizerId]);
+          for (const id of organizerIds) {
+            await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [event.id, id]);
+          }
         } else {
           const assigned = await client.query('SELECT event_id FROM event_organizers WHERE event_id = $1 AND organizer_id = $2', [event.id, organizerId]);
           if (!assigned.rows.length) throw new Error('A locally created event ID is already in use.');

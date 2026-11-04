@@ -48,7 +48,9 @@ force deletion removes the event and its attendance records. The student
 directory groups sections by
 program and year. New students and password resets use the section as a temporary
 password and require a password change. Deleting a student revokes their organizer
-access but preserves historical attendance. Event organizers use the PWA/mobile
+access but preserves historical attendance. An event created by an organizer is
+automatically assigned to every active organizer in the same section, including
+events created offline and uploaded later. Event organizers use the PWA/mobile
 app to view and import their own section roster, scan assigned events, and review
 check-ins; they cannot use the system-manager console. Manager APIs enforce this
 role boundary even if an organizer opens `/manager` directly.

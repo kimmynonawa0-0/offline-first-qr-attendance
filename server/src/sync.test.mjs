@@ -46,6 +46,25 @@ test('sync registers a new local event to its organizer in the same transaction'
   assert.equal(calls.at(-1).sql, 'COMMIT');
 });
 
+test('sync shares a new local event with active organizers in the same section', async () => {
+  const calls = [];
+  const client = { async query(sql, args = []) {
+    calls.push({ sql, args });
+    if (sql.includes('FROM organizers')) return { rows: [
+      { id: 'organizer-1', section: 'BSCS-3C', access_level: 'organizer', enabled: true },
+      { id: 'organizer-2', section: 'BSCS-3C', access_level: 'organizer', enabled: true },
+      { id: 'organizer-3', section: 'BSCS-3A', access_level: 'organizer', enabled: true },
+    ] };
+    if (sql.startsWith('INSERT INTO events')) return { rows: [{ id: args[0] }] };
+    return { rows: [] };
+  } };
+  await saveBatch(client, { students: [], events: [
+    { id: 'local-event', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', createdLocally: true },
+  ], records: [] }, { id: 'organizer-1', section: 'BSCS-3C', access_level: 'organizer', must_change_password: false });
+  const assignments = calls.filter(call => call.sql.startsWith('INSERT INTO event_organizers')).map(call => call.args[1]);
+  assert.deepEqual(assignments, ['organizer-1', 'organizer-2']);
+});
+
 test('roster validation rejects duplicate IDs and malformed rows', () => {
   assert.deepEqual(validateRoster([{ id: '001', name: 'A', section: 'S' }]), [{ id: '001', name: 'A', section: 'S', email: '' }]);
   assert.throws(() => validateRoster([{ id: '1', name: 'A', section: 'S' }, { id: '1', name: 'B', section: 'S' }]), /Duplicate student ID/);

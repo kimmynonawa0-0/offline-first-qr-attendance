@@ -42,9 +42,16 @@ export function organizerEventDeleteError(account, event, attendanceCount) {
   return null;
 }
 
-export function organizerEventAssigneeIds(account, requestedIds) {
-  if (!canCreateOrganizerEvent(account) || !Array.isArray(requestedIds)) return null;
-  const ids = requestedIds.map(id => typeof id === 'string' ? id.trim() : '');
-  if (ids.some(id => !id) || new Set(ids).size !== ids.length) return null;
-  return [...new Set([...ids, account.id])];
+export function organizerSectionAssigneeIds(account, organizers) {
+  if (!canCreateOrganizerEvent(account)) return null;
+  const ids = new Set([account.id]);
+  if (account.section && Array.isArray(organizers)) {
+    for (const organizer of organizers) {
+      if (organizer?.id && organizer.section === account.section
+        && organizer.access_level === 'organizer' && organizer.enabled !== false) {
+        ids.add(organizer.id);
+      }
+    }
+  }
+  return [...ids];
 }

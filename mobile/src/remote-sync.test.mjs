@@ -7,7 +7,7 @@ test('organizer event creation posts an authenticated event and confirms it', as
   const result = await createOrganizerEvent(event, { id: 'org', role: 'admin' }, 'session', 'https://api.test', async (url, options) => {
     assert.equal(url, 'https://api.test/organizer/events');
     assert.equal(options.headers.Authorization, 'Bearer session');
-    assert.deepEqual(JSON.parse(options.body), { event, organizerIds: ['org'] });
+    assert.deepEqual(JSON.parse(options.body), { event });
     return { ok: true, json: async () => ({ event }) };
   });
   assert.deepEqual(result, event);

@@ -73,7 +73,7 @@ export async function downloadOrganizerBootstrap(token, apiUrl, fetchImpl = fetc
 export async function createOrganizerEvent(event, user, token, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'admin') throw new Error('Log in as an organizer to create an event.');
   if (!token) throw new Error('Sign in online as an organizer to create an event.');
-  const result = await postJson(apiUrl, '/organizer/events', { event, organizerIds: [user.id] }, fetchImpl, token);
+  const result = await postJson(apiUrl, '/organizer/events', { event }, fetchImpl, token);
   if (!result.event?.id || result.event.id !== event.id) throw new Error('Server did not confirm the event creation.');
   return result.event;
 }

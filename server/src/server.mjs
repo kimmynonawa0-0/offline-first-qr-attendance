@@ -6,7 +6,7 @@ import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, valid
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
 import { validateManagedStudent } from './management-students.mjs';
-import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventAssigneeIds, organizerEventDeleteError, rosterScopeError } from './auth.mjs';
+import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerSectionAssigneeIds, rosterScopeError } from './auth.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
 import { createManagerRecoveryCode, hashManagerRecoveryCode, managerRecoveryCodeMatches } from './manager-recovery.mjs';
 
@@ -400,11 +400,11 @@ const server = http.createServer(async (request, response) => {
       if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
       if (!canCreateOrganizerEvent(organizer)) return send(403, { error: organizer.access_level === 'manager' ? 'System managers create and assign events at /manager.' : 'Change your temporary password before creating events.' });
       if (!validEvent(body.event)) return send(400, { error: 'Provide a valid event name, location, date, and time.' });
-      const organizerIds = organizerEventAssigneeIds(organizer, body.organizerIds);
-      if (!organizerIds) return send(400, { error: 'Choose valid, unique active organizers for this event.' });
-      const activeOrganizers = await pool.query(`SELECT id FROM organizers WHERE id = ANY($1::text[])
-        AND enabled = TRUE AND access_level = 'organizer'`, [organizerIds]);
-      if (activeOrganizers.rows.length !== organizerIds.length) return send(400, { error: 'Every event assignee must have active organizer access.' });
+      const sectionOrganizers = organizer.section
+        ? await pool.query(`SELECT id, section, access_level, enabled FROM organizers
+          WHERE enabled = TRUE AND access_level = 'organizer' AND section = $1`, [organizer.section])
+        : { rows: [] };
+      const organizerIds = organizerSectionAssigneeIds(organizer, sectionOrganizers.rows);
       const event = body.event;
       const client = await pool.connect();
       try {
@@ -844,7 +844,7 @@ const server = http.createServer(async (request, response) => {
       return { ...record, studentName: student.name, event: event.name, location: event.location };
     });
     const client = await pool.connect();
-    try { return send(200, await saveBatch(client, body, organizer.id)); }
+    try { return send(200, await saveBatch(client, body, organizer)); }
     finally { client.release(); }
   } catch (error) {
     if (error instanceof SyntaxError || /Invalid|Missing|too large|credentials|Import between|Duplicate|email|row|Choose a|File needs|Do not include|Roster file|Unclosed|Malformed|Unexpected text/i.test(error.message)) {
