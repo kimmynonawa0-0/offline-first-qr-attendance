@@ -4,10 +4,14 @@ function localTime(date) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-export function eventForToday(events, now = new Date()) {
-  const today = events
+export function eventsForToday(events, now = new Date()) {
+  return events
     .filter(event => event.date === localDate(now))
     .sort((left, right) => left.time.localeCompare(right.time));
+}
+
+export function eventForToday(events, now = new Date()) {
+  const today = eventsForToday(events, now);
   const startedToday = today.filter(event => event.time <= localTime(now));
   return startedToday.at(-1) || today[0] || null;
 }

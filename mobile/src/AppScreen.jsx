@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { eventForToday, sortEventsByDate } from './today-event.mjs';
+import { eventForToday, eventsForToday, sortEventsByDate } from './today-event.mjs';
 import { currentTwelveHourTime, formatTwelveHourTime, parseTwelveHourTime } from './event-time.mjs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -175,6 +175,7 @@ export default function AppScreen() {
   const { data, user, setUser, webCredential, adminSession, setAdminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice, startupRoute, consumeStartupRoute } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
   const [eventInfoOpen, setEventInfoOpen] = useState(false);
+  const [scanPickerOpen, setScanPickerOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -310,6 +311,7 @@ export default function AppScreen() {
   const event = assignedEvents.find(e => e.id === eventId);
   const personalRecords = user ? data.records.filter(r => r.studentId === user.id) : [];
   const currentEvent = eventForToday(assignedEvents);
+  const todayEvents = eventsForToday(assignedEvents);
   const todayRecords = data.records.filter(r => r.date === localDate());
   const pending = data.records.filter(r => !r.synced).length;
   const ownAttendance = event?.attendees.find(a => a.id === user?.id);
@@ -318,6 +320,17 @@ export default function AppScreen() {
     && (event.createdBy === user.id || (event.createdLocally && !event.createdBy)));
   const receipt = data.records.find(r => r.id === recordId);
   const latestPersonalRecord = personalRecords[0];
+  function startScanning() {
+    if (!todayEvents.length) {
+      setNotice("There's no event for today.");
+      return;
+    }
+    if (todayEvents.length === 1) {
+      go('scanner', { eventId: todayEvents[0].id });
+      return;
+    }
+    setScanPickerOpen(true);
+  }
 
   let content;
   if (authScreen) content = <LoginScreen
@@ -355,7 +368,7 @@ export default function AppScreen() {
   else if (screen === 'admin-home') content = <>
     <View style={styles.screenLead}><Text style={styles.greeting}>Good day,</Text><Text style={styles.greetingName}>{user.name}</Text></View>
     <Metrics items={[["Present today", todayRecords.filter(r => r.status === 'PRESENT').length], ['Pending sync', pending]]} />
-    <Button icon="scan-outline" onPress={() => currentEvent ? go('scanner', { eventId: currentEvent.id }) : setNotice("There's no event for today.")}>Start scanning</Button>
+    <Button icon="scan-outline" onPress={startScanning}>Start scanning</Button>
     {currentEvent ? <EventRow event={currentEvent} onPress={() => go('event', { eventId: currentEvent.id })} /> : <Card><Muted>There&apos;s no event for today.</Muted></Card>}
     <RecentActivity records={data.records.slice(0, 4)} onSeeAll={() => go('admin-records')} />
     <Card><Title>Organizer tools</Title>
@@ -489,6 +502,15 @@ export default function AppScreen() {
           : 'Event created and published.');
       })}>{busy ? 'Saving...' : 'Create event'}</Button>
       <Button secondary disabled={busy} onPress={() => setCreateEventOpen(false)}>Cancel</Button>
+    </ModalFrame>}
+    {scanPickerOpen && <ModalFrame title="Choose event" onClose={() => setScanPickerOpen(false)}>
+      <Muted>There are {todayEvents.length} events today. Choose the event you are scanning.</Muted>
+      {todayEvents.map(event => <EventListRow key={event.id} event={event} detail={event.location}
+        onPress={() => {
+          setScanPickerOpen(false);
+          go('scanner', { eventId: event.id });
+        }} />)}
+      <Button secondary onPress={() => setScanPickerOpen(false)}>Cancel</Button>
     </ModalFrame>}
     {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
     {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
