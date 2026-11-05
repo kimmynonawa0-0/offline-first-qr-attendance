@@ -496,7 +496,7 @@ export default function AppScreen() {
     </View>
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)} dismissOnBackdrop showClose={false}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)} dismissOnBackdrop showClose={false}><EventSummary event={currentEvent} /></ModalFrame>}
-    {createEventOpen && <ModalFrame title="Create event" onClose={() => setCreateEventOpen(false)} busy={busy}>
+    {createEventOpen && <ModalFrame title="Create event" onClose={() => setCreateEventOpen(false)} busy={busy} showClose={false}>
       <Muted>Create an event for your section. Every active organizer in your section can scan it. If you are offline, it stays on this device and students will not see a notification. Share the event in your group chat; it will upload with scanned attendance when you have internet.</Muted>
       <Field label="Event name" value={eventDraft.name} onChangeText={name => setEventDraft(current => ({ ...current, name }))} placeholder="e.g. Department assembly" />
       <Field label="Location" value={eventDraft.location} onChangeText={location => setEventDraft(current => ({ ...current, location }))} placeholder="e.g. Main hall" />
@@ -528,7 +528,7 @@ export default function AppScreen() {
       })}>{busy ? 'Saving...' : 'Create event'}</Button>
       <Button secondary disabled={busy} onPress={() => setCreateEventOpen(false)}>Cancel</Button>
     </ModalFrame>}
-    {scanPickerOpen && <ModalFrame title="Choose event" onClose={() => setScanPickerOpen(false)}>
+    {scanPickerOpen && <ModalFrame title="Choose event" onClose={() => setScanPickerOpen(false)} showClose={false}>
       <Muted>There are {todayEvents.length} events today. Choose the event you are scanning.</Muted>
       {todayEvents.map(event => <EventListRow key={event.id} event={event} detail={event.location}
         onPress={() => {
@@ -537,8 +537,8 @@ export default function AppScreen() {
         }} />)}
       <Button secondary onPress={() => setScanPickerOpen(false)}>Cancel</Button>
     </ModalFrame>}
-    {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
-    {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy}>
+    {confirm && <ModalFrame title={confirm.title} onClose={() => setConfirm(null)} busy={busy} showClose={false}><Muted>{confirm.message}</Muted><ErrorText>{error}</ErrorText><Button disabled={busy} onPress={confirm.action}>{busy ? 'Saving...' : 'Confirm'}</Button><Button secondary disabled={busy} onPress={() => setConfirm(null)}>Cancel</Button></ModalFrame>}
+    {syncOpen && <ModalFrame title="Upload to server" onClose={() => setSyncOpen(false)} busy={busy} showClose={false}>
       <Muted>Your signed-in organizer session will authorize this upload. Rosters, events, and attendance will be sent to PostgreSQL.</Muted>
       <ErrorText>{error}</ErrorText>
       <Button disabled={busy} onPress={() => run(async () => {
@@ -549,6 +549,7 @@ export default function AppScreen() {
         setSyncOpen(false);
         setNotice(`Upload complete. ${result.acceptedEventIds.length} created event(s) and ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
       })}>{busy ? 'Uploading...' : 'Upload'}</Button>
+      <Button secondary disabled={busy} onPress={() => setSyncOpen(false)}>Cancel</Button>
     </ModalFrame>}
   </SafeAreaView>;
 }
