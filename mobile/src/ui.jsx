@@ -208,6 +208,30 @@ export function Field({ label, value, onChangeText, password = false, newPasswor
   </View>;
 }
 
+export function SearchField({ value, onChangeText, placeholder = 'Search', accessibilityLabel = placeholder, ...props }) {
+  return <View style={styles.searchRow}>
+    <Ionicons name="search-outline" size={19} color={colors.muted} />
+    <TextInput
+      accessibilityLabel={accessibilityLabel}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      placeholderTextColor={colors.placeholder}
+      autoCapitalize="none"
+      autoCorrect={false}
+      selectionColor={colors.yellow}
+      returnKeyType="search"
+      style={styles.searchInput}
+      {...props}
+    />
+    {value
+      ? <Pressable accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={6} onPress={() => onChangeText('')} style={styles.searchClear}>
+        <Ionicons name="close-circle" size={19} color={colors.muted} />
+      </Pressable>
+      : null}
+  </View>;
+}
+
 function Skeleton({ style }) {
   const opacity = useSharedValue(0.45);
   useEffect(() => {
@@ -340,6 +364,9 @@ export const styles = StyleSheet.create({
   inputDisabled: { backgroundColor: colors.inputDisabled },
   input: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 13, fontSize: 16, color: colors.ink },
   passwordToggle: { padding: 14 },
+  searchRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: radius.md, backgroundColor: colors.inputSurface },
+  searchInput: { flex: 1, minWidth: 0, paddingVertical: 11, fontSize: type.body, color: colors.ink },
+  searchClear: { padding: 4 },
   button: { borderRadius: radius.md, alignItems: 'stretch', justifyContent: 'center', minHeight: 50, marginVertical: 2, overflow: 'hidden' },
   buttonFill: { minHeight: 50, paddingHorizontal: space.lg, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center' },
   buttonPrimary: { backgroundColor: colors.yellow },
@@ -399,6 +426,16 @@ export const styles = StyleSheet.create({
   eventSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2, paddingBottom: 2 },
   eventSectionTitle: { color: colors.ink, fontFamily: displayFont, fontSize: 18, fontWeight: '900', letterSpacing: 0.5, textTransform: 'uppercase' },
   eventSectionCount: { color: colors.muted, fontSize: type.caption, fontWeight: '800' },
+  eventSectionToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterChip: { minHeight: 36, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.inputDisabled },
+  filterChipActive: { backgroundColor: colors.yellow, borderColor: colors.yellow },
+  filterChipText: { color: colors.muted, fontSize: type.caption, fontWeight: '800' },
+  filterChipTextActive: { color: colors.onAccent },
+  filterSummary: { color: colors.muted, fontSize: type.caption, textAlign: 'center', paddingVertical: 4 },
+  emptyState: { alignItems: 'center', gap: 8, paddingVertical: space.xl, paddingHorizontal: space.lg },
+  emptyIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 27, backgroundColor: colors.accentSurface },
+  emptyTitle: { color: colors.ink, fontSize: type.title, fontWeight: '800' },
   eventCardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, borderRadius: radius.md },
   eventDateBadge: { width: 58, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.panelRaised },
   eventDateMonth: { color: colors.yellow, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },

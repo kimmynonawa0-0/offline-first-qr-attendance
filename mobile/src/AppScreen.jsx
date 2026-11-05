@@ -20,7 +20,7 @@ import { createOrganizerEvent, deleteOrganizerEvent, downloadOrganizerBootstrap,
 import { getOfflineCredential } from './offline-auth.mjs';
 import { serverRefreshScope } from './server-refresh.mjs';
 import PullToRefreshScrollView from './PullToRefreshScrollView';
-import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, LoadingScreen, ModalFrame, Muted, Row, ScanCorners, styles, Title } from './ui';
+import { BrandMark, Button, Card, colors, ErrorText, Field, LinkButton, LoadingScreen, ModalFrame, Muted, Row, ScanCorners, SearchField, styles, Title } from './ui';
 
 const adminScreens = ['admin-home', 'admin-records', 'event', 'event-records', 'history', 'scanner', 'receipt', 'roster-import'];
 const studentScreens = ['student-home', 'records', 'profile'];
@@ -197,25 +197,100 @@ function EventCard({ event, onOpen, onScan, onViewRecords }) {
   </Card>;
 }
 
+function FilterChip({ label, count, selected, onPress }) {
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    accessibilityState={{ selected }}
+    onPress={onPress}
+    style={({ pressed }) => [styles.filterChip, selected && styles.filterChipActive, pressed && styles.buttonMuted]}
+  >
+    <Text style={[styles.filterChipText, selected && styles.filterChipTextActive]}>{label}{count === undefined ? '' : ` ${count}`}</Text>
+  </Pressable>;
+}
+
 function History({ events, onScan, onManage, onViewRecords }) {
-  const grouped = groupEventsByPhase(events);
+  const [query, setQuery] = useState('');
+  const [phase, setPhase] = useState('all');
+  const [pastOpen, setPastOpen] = useState(false);
+  const search = query.trim().toLowerCase();
+  const matched = search
+    ? events.filter(event => `${event.name} ${event.location} ${event.date}`.toLowerCase().includes(search))
+    : events;
+  const grouped = groupEventsByPhase(matched);
+  const counts = {
+    all: matched.length,
+    today: grouped.today.length,
+    upcoming: grouped.upcoming.length,
+    past: grouped.past.length,
+  };
+  const pastExpanded = phase === 'past' || Boolean(search) || pastOpen;
   const sections = [
     ['today', 'Today', grouped.today],
     ['upcoming', 'Upcoming', grouped.upcoming],
     ['past', 'Past', grouped.past],
-  ];
+  ].filter(([key, , list]) => list.length > 0 && (phase === 'all' || phase === key));
+  const filtered = phase !== 'all' || Boolean(search);
+  function clearFilters() {
+    setQuery('');
+    setPhase('all');
+    setPastOpen(false);
+  }
+
+  if (!events.length) return <View style={styles.emptyState}>
+    <View style={styles.emptyIcon}><Ionicons name="calendar-outline" size={26} color={colors.yellow} /></View>
+    <Text style={styles.emptyTitle}>No events yet</Text>
+    <Muted>Create an event to start scanning attendance.</Muted>
+  </View>;
+
   return <>
-    {events.length === 0 && <Muted>No events yet. Create your first event to start scanning.</Muted>}
-    {sections.filter(([, , list]) => list.length > 0).map(([key, title, list]) => <View key={key} style={styles.eventSection}>
-      <View style={styles.eventSectionHeader}>
-        <Text style={styles.eventSectionTitle}>{title}</Text>
-        <Text style={styles.eventSectionCount}>{list.length} event{list.length === 1 ? '' : 's'}</Text>
+    <SearchField
+      value={query}
+      onChangeText={setQuery}
+      placeholder="Search events or locations"
+      accessibilityLabel="Search events"
+    />
+    <View style={styles.filters}>
+      <FilterChip label="All" count={counts.all} selected={phase === 'all'} onPress={() => setPhase('all')} />
+      <FilterChip label="Today" count={counts.today} selected={phase === 'today'} onPress={() => setPhase('today')} />
+      <FilterChip label="Upcoming" count={counts.upcoming} selected={phase === 'upcoming'} onPress={() => setPhase('upcoming')} />
+      <FilterChip label="Past" count={counts.past} selected={phase === 'past'} onPress={() => setPhase('past')} />
+    </View>
+    {sections.length === 0
+      ? <View style={styles.emptyState}>
+        <View style={styles.emptyIcon}><Ionicons name="search-outline" size={26} color={colors.yellow} /></View>
+        <Text style={styles.emptyTitle}>No matching events</Text>
+        <Muted>Try another event name or clear the filters.</Muted>
+        <LinkButton onPress={clearFilters}>Clear filters</LinkButton>
       </View>
-      {list.map(event => <EventCard key={event.id} event={event}
-        onOpen={() => onManage(event.id)}
-        onScan={() => onScan(event.id)}
-        onViewRecords={() => onViewRecords(event.id)} />)}
-    </View>)}
+      : sections.map(([key, title, list]) => {
+        const collapsed = key === 'past' && phase === 'all' && !pastExpanded;
+        return <View key={key} style={styles.eventSection}>
+          {key === 'past' && phase === 'all'
+            ? <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={pastExpanded ? 'Hide past events' : 'Show past events'}
+              accessibilityState={{ expanded: pastExpanded }}
+              onPress={() => setPastOpen(open => !open)}
+              style={({ pressed }) => [styles.eventSectionHeader, pressed && styles.buttonMuted]}
+            >
+              <Text style={styles.eventSectionTitle}>Past</Text>
+              <View style={styles.eventSectionToggle}>
+                <Text style={styles.eventSectionCount}>{list.length} event{list.length === 1 ? '' : 's'}</Text>
+                <Ionicons name={pastExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+              </View>
+            </Pressable>
+            : <View style={styles.eventSectionHeader}>
+              <Text style={styles.eventSectionTitle}>{title}</Text>
+              <Text style={styles.eventSectionCount}>{list.length} event{list.length === 1 ? '' : 's'}</Text>
+            </View>}
+          {!collapsed && list.map(event => <EventCard key={event.id} event={event}
+            onOpen={() => onManage(event.id)}
+            onScan={() => onScan(event.id)}
+            onViewRecords={() => onViewRecords(event.id)} />)}
+        </View>;
+      })}
+    {filtered && matched.length > 0 && <Text style={styles.filterSummary}>{matched.length} matching event{matched.length === 1 ? '' : 's'}</Text>}
   </>;
 }
 
