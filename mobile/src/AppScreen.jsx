@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { eventDayLabel, eventForToday, eventsForToday, groupEventsByPhase, isEventPast, sortEventsByDate } from './today-event.mjs';
+import { eventDayLabel, eventForToday, eventsForToday, groupEventsByPhase, isEventPast } from './today-event.mjs';
 import { currentTimeValue, formatTwelveHourTime } from './event-time.mjs';
 import EventDateTimeFields from './EventDateTimeFields';
 import { StatusBar } from 'expo-status-bar';
@@ -207,6 +207,100 @@ function FilterChip({ label, count, selected, onPress }) {
   >
     <Text style={[styles.filterChipText, selected && styles.filterChipTextActive]}>{label}{count === undefined ? '' : ` ${count}`}</Text>
   </Pressable>;
+}
+
+function recordTimestamp(record) {
+  const value = record.timeInAt || record.recordedAt;
+  const parsed = value ? new Date(value).getTime() : NaN;
+  if (!Number.isNaN(parsed)) return parsed;
+  const fallback = new Date(`${record.date || ''}T${record.time || '00:00'}`).getTime();
+  return Number.isNaN(fallback) ? 0 : fallback;
+}
+
+function studentInitials(name) {
+  return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('');
+}
+
+function AdminRecords({ data, onOpenEvent }) {
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const rows = [...data.records].sort((left, right) => recordTimestamp(right) - recordTimestamp(left));
+  const completed = rows.filter(record => record.timeOutAt).length;
+  const pending = rows.filter(record => record.synced === false).length;
+  const search = query.trim().toLowerCase();
+  const matched = rows.filter(record => {
+    const eventName = record.event || data.events.find(event => event.id === record.eventId)?.name || '';
+    if (search && !`${record.studentName} ${record.studentId} ${eventName} ${record.date}`.toLowerCase().includes(search)) return false;
+    if (filter === 'completed') return Boolean(record.timeOutAt);
+    if (filter === 'timed-in') return !record.timeOutAt;
+    if (filter === 'pending') return record.synced === false;
+    return true;
+  });
+  const filters = [
+    ['all', 'All', rows.length],
+    ['completed', 'Completed', completed],
+    ['timed-in', 'Timed in', rows.length - completed],
+    ['pending', 'Pending', pending],
+  ];
+
+  return <>
+    <Card>
+      <View style={styles.recordsHeader}>
+        <View style={styles.recordsHeaderIcon}><Ionicons name="people-outline" size={23} color={colors.yellow} /></View>
+        <View style={styles.recordsHeaderText}>
+          <Title>Student attendance</Title>
+          <Muted>Search every check-in across your events.</Muted>
+        </View>
+      </View>
+      <Row>
+        <View style={styles.summaryTile}><Text style={styles.summaryLabel}>Check-ins</Text><Text style={styles.summaryValue}>{rows.length}</Text><Text style={styles.summaryDetail}>{completed} completed</Text></View>
+        <View style={styles.summaryTile}><Text style={styles.summaryLabel}>Pending sync</Text><Text style={styles.summaryValue}>{pending}</Text><Text style={styles.summaryDetail}>Saved on this device</Text></View>
+      </Row>
+    </Card>
+    {rows.length === 0
+      ? <View style={styles.emptyState}>
+        <View style={styles.emptyIcon}><Ionicons name="document-text-outline" size={26} color={colors.yellow} /></View>
+        <Text style={styles.emptyTitle}>No attendance yet</Text>
+        <Muted>Scan a student at an event and their record will appear here.</Muted>
+      </View>
+      : <>
+        <SearchField value={query} onChangeText={setQuery} placeholder="Search students, IDs, or events" accessibilityLabel="Search attendance" />
+        <View style={styles.filters}>
+          {filters.map(([value, label, count]) => <FilterChip key={value} label={label} count={count} selected={filter === value} onPress={() => setFilter(value)} />)}
+        </View>
+        {matched.length === 0
+          ? <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}><Ionicons name="search-outline" size={26} color={colors.yellow} /></View>
+            <Text style={styles.emptyTitle}>No matching records</Text>
+            <Muted>Try another student, event, or filter.</Muted>
+            <LinkButton onPress={() => { setQuery(''); setFilter('all'); }}>Clear filters</LinkButton>
+          </View>
+          : <Card>
+            {matched.map((record, index) => {
+              const eventName = record.event || data.events.find(event => event.id === record.eventId)?.name || 'Event';
+              const content = <>
+                <View style={styles.recordAvatar}><Text style={styles.recordAvatarText}>{studentInitials(record.studentName)}</Text></View>
+                <View style={styles.recordBody}>
+                  <Text numberOfLines={1} style={styles.recordStudent}>{record.studentName}</Text>
+                  <Text numberOfLines={1} style={styles.recordMeta}>{record.studentId} / {eventName}</Text>
+                  <Text numberOfLines={1} style={styles.recordMeta}>{record.date} / In {record.timeIn || record.time || '—'} / Out {record.timeOut || '—'}</Text>
+                </View>
+                <View style={styles.recordBadges}>
+                  <Text style={[styles.recordStatusChip, record.timeOutAt ? styles.recordStatusDone : styles.recordStatusIn]}>{record.timeOutAt ? 'DONE' : 'IN'}</Text>
+                  {record.synced === false && <Text style={styles.recordSync}>LOCAL</Text>}
+                </View>
+              </>;
+              const rowStyle = [styles.recordItem, index === 0 && styles.recordItemFirst];
+              return record.eventId
+                ? <Pressable key={record.id} accessibilityRole="button"
+                  accessibilityLabel={`View ${record.studentName} record for ${eventName}`}
+                  onPress={() => onOpenEvent(record.eventId)}
+                  style={({ pressed }) => [...rowStyle, pressed && styles.buttonMuted]}>{content}</Pressable>
+                : <View key={record.id} style={rowStyle}>{content}</View>;
+            })}
+          </Card>}
+      </>}
+  </>;
 }
 
 function History({ events, onScan, onManage, onViewRecords }) {
@@ -527,17 +621,8 @@ export default function AppScreen() {
       <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
   </>;
   else if (screen === 'roster-import') content = <RosterImport />;
-  else if (screen === 'admin-records') content = <>
-    <Card><Title>Records by event</Title><Muted>Choose an event to review the students scanned for it. Events are newest first.</Muted></Card>
-    {assignedEvents.length === 0
-      ? <Card><Muted>No events are available on this device yet.</Muted></Card>
-      : sortEventsByDate(assignedEvents).map(event => {
-        const scanned = eventAttendanceCount(data, event.id);
-        return <EventListRow key={event.id} event={event}
-          detail={`${event.location} / ${scanned} student${scanned === 1 ? '' : 's'} scanned`}
-          onPress={() => go('event-records', { eventId: event.id })} />;
-      })}
-  </>;
+  else if (screen === 'admin-records') content = <AdminRecords data={data}
+    onOpenEvent={id => go('event-records', { eventId: id })} />;
   else if (screen === 'history') content = <>
     <Button icon="add-outline" onPress={() => { setError(''); setCreateEventOpen(true); }}>Create event</Button>
     <History events={assignedEvents} onManage={id => go('event', { eventId: id })}
