@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { eventForToday, eventsForToday, sortEventsByDate } from './today-event.mjs';
+import { eventForToday, eventsForToday, isEventPast, sortEventsByDate } from './today-event.mjs';
 import { currentTwelveHourTime, formatTwelveHourTime, parseTwelveHourTime } from './event-time.mjs';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -149,7 +149,7 @@ function History({ events, onManage, onViewRecords }) {
   return <>{events.length === 0 && <Muted>No events found.</Muted>}
     {events.map(event => <Card key={event.id}><EventSummary event={event} />
       <Muted>{event.attendees.length} students checked in</Muted>
-      <Button secondary onPress={() => onManage(event.id)}>Manage event</Button>
+      <Button secondary onPress={() => onManage(event.id)}>{isEventPast(event) ? 'Open event' : 'Manage event'}</Button>
       <LinkButton onPress={() => onViewRecords(event.id)}>View attendance</LinkButton>
     </Card>)}
   </>;
@@ -317,6 +317,7 @@ export default function AppScreen() {
   }
   const assignedEvents = user?.role === 'admin' ? data.events.filter(item => item.assignedToOrganizer) : data.events;
   const event = assignedEvents.find(e => e.id === eventId);
+  const eventPast = Boolean(event && isEventPast(event));
   const personalRecords = user ? data.records.filter(r => r.studentId === user.id) : [];
   const currentEvent = eventForToday(assignedEvents);
   const todayEvents = eventsForToday(assignedEvents);
@@ -410,23 +411,31 @@ export default function AppScreen() {
         <Muted>{scanned} student{scanned === 1 ? '' : 's'} scanned</Muted>
       </Card>
       <EventAttendanceList rows={eventAttendanceRows(data, event.id)} />
-      <Button secondary onPress={() => go('event', { eventId: event.id })}>Open event tools</Button>
+      <Button secondary onPress={() => go('event', { eventId: event.id })}>{eventPast ? 'Open event' : 'Open event tools'}</Button>
     </>;
   } else if (screen === 'event' && event) content = <>
     <Card admin><EventSummary event={event} />
-      <Button purple onPress={() => go('scanner', { eventId, scanMode: 'time-in' })}>Scan Time In</Button>
-      <Button secondary onPress={() => go('scanner', { eventId, scanMode: 'time-out' })}>Scan Time Out</Button>
+      {eventPast
+        ? <Muted>This event has ended. Attendance is read-only.</Muted>
+        : <>
+          <Button purple onPress={() => go('scanner', { eventId, scanMode: 'time-in' })}>Scan Time In</Button>
+          <Button secondary onPress={() => go('scanner', { eventId, scanMode: 'time-out' })}>Scan Time Out</Button>
+        </>}
       {canDeleteEvent && (eventScanCount > 0
         ? <Muted>This event has {eventScanCount} check-in{eventScanCount === 1 ? '' : 's'}. Only the system manager can delete it.</Muted>
         : <Button danger onPress={() => requestDeleteEvent(event)}>Delete event</Button>)}
     </Card>
-    <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
-      <Muted>Time In: {ownAttendance?.time || displayTime(ownAttendance?.timeInAt)}</Muted>
-      <Muted>Time Out: {ownAttendance?.timeOut || displayTime(ownAttendance?.timeOutAt)}</Muted>
-      <Button disabled={busy || attendanceStatus(data, eventId, user.id).status === 'completed'} onPress={() => run(() => update(d => checkIn(d, user, eventId, user, 'organizer', Crypto.randomUUID(), attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'time-in' : 'time-out')), () => setNotice(attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Time In recorded.' : 'Time Out recorded.'))}>{attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Check myself in (Time In)' : attendanceStatus(data, eventId, user.id).status === 'timed-in' ? 'Check myself out (Time Out)' : 'Attendance complete'}</Button>
-      <Button secondary onPress={() => setQrOpen(true)}>My QR</Button><Muted>Self check-in is recorded as organizer attendance.</Muted>
-    </Card>
-    <Card><Title>Attendees ({event.attendees.length})</Title><Attendees event={event} /></Card>
+    {eventPast
+      ? <EventAttendanceList rows={eventAttendanceRows(data, event.id)} />
+      : <>
+        <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
+          <Muted>Time In: {ownAttendance?.time || displayTime(ownAttendance?.timeInAt)}</Muted>
+          <Muted>Time Out: {ownAttendance?.timeOut || displayTime(ownAttendance?.timeOutAt)}</Muted>
+          <Button disabled={busy || attendanceStatus(data, eventId, user.id).status === 'completed'} onPress={() => run(() => update(d => checkIn(d, user, eventId, user, 'organizer', Crypto.randomUUID(), attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'time-in' : 'time-out')), () => setNotice(attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Time In recorded.' : 'Time Out recorded.'))}>{attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Check myself in (Time In)' : attendanceStatus(data, eventId, user.id).status === 'timed-in' ? 'Check myself out (Time Out)' : 'Attendance complete'}</Button>
+          <Button secondary onPress={() => setQrOpen(true)}>My QR</Button><Muted>Self check-in is recorded as organizer attendance.</Muted>
+        </Card>
+        <Card><Title>Attendees ({event.attendees.length})</Title><Attendees event={event} /></Card>
+      </>}
   </>;
   else if (screen === 'scanner' && event) content = <Scanner data={data} eventId={eventId} initialMode={scanMode} busy={busy} onSave={(person, method, action) => {
     const id = action === 'time-in'
