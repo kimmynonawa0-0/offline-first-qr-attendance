@@ -176,13 +176,12 @@ export function LinkButton({ children, onPress, disabled }) {
   </Pressable>;
 }
 
-export function Field({ label, value, onChangeText, password = false, newPassword = false, email = false, username = false, editable = true, placeholder, onFocus, onBlur, ...props }) {
+export function Field({ label, value, onChangeText, password = false, newPassword = false, email = false, username = false, editable = true, placeholder, ...props }) {
   const [visible, setVisible] = useState(false);
-  const [focused, setFocused] = useState(false);
   const identity = password || email || username;
   return <View style={styles.field}>
     <Text style={styles.label}>{label}</Text>
-    <View style={[styles.inputRow, focused && styles.inputRowFocused, !editable && styles.inputDisabled]}>
+    <View style={[styles.inputRow, !editable && styles.inputDisabled]}>
       <TextInput
         accessibilityLabel={label}
         value={value}
@@ -199,8 +198,6 @@ export function Field({ label, value, onChangeText, password = false, newPasswor
         enterKeyHint="next"
         secureTextEntry={password && !visible}
         selectionColor={colors.yellow}
-        onFocus={event => { setFocused(true); onFocus?.(event); }}
-        onBlur={event => { setFocused(false); onBlur?.(event); }}
         style={[styles.input, !editable && { color: colors.muted }]}
         {...props}
       />
@@ -321,7 +318,6 @@ export const styles = StyleSheet.create({
   label: { color: colors.paper, fontSize: type.caption, letterSpacing: 0.4, fontWeight: '700', marginBottom: 6 },
   field: { marginBottom: 10 },
   inputRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.inputBorder, borderRadius: radius.md, backgroundColor: colors.inputSurface },
-  inputRowFocused: { borderColor: colors.yellow },
   inputDisabled: { backgroundColor: colors.inputDisabled },
   input: { flex: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 13, fontSize: 16, color: colors.ink },
   passwordToggle: { padding: 14 },
