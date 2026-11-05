@@ -3,7 +3,8 @@ import { KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { eventForToday, eventsForToday, isEventPast, sortEventsByDate } from './today-event.mjs';
-import { currentTwelveHourTime, formatTwelveHourTime, parseTwelveHourTime } from './event-time.mjs';
+import { currentTimeValue, formatTwelveHourTime } from './event-time.mjs';
+import EventDateTimeFields from './EventDateTimeFields';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
@@ -191,7 +192,7 @@ export default function AppScreen() {
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
   const [createEventOpen, setCreateEventOpen] = useState(false);
-  const [eventDraft, setEventDraft] = useState(() => ({ name: '', location: '', date: localDate(), time: currentTwelveHourTime() }));
+  const [eventDraft, setEventDraft] = useState(() => ({ name: '', location: '', date: localDate(), time: currentTimeValue() }));
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   useEffect(() => {
@@ -400,7 +401,7 @@ export default function AppScreen() {
       })}
   </>;
   else if (screen === 'history') content = <>
-    <Button icon="add-outline" onPress={() => setCreateEventOpen(true)}>Create event</Button>
+    <Button icon="add-outline" onPress={() => { setError(''); setCreateEventOpen(true); }}>Create event</Button>
     <History events={sortEventsByDate(assignedEvents)} onManage={id => go('event', { eventId: id })}
       onViewRecords={id => go('event-records', { eventId: id })} />
   </>;
@@ -500,11 +501,17 @@ export default function AppScreen() {
       <Muted>Create an event for your section. Every active organizer in your section can scan it. If you are offline, it stays on this device and students will not see a notification. Share the event in your group chat; it will upload with scanned attendance when you have internet.</Muted>
       <Field label="Event name" value={eventDraft.name} onChangeText={name => setEventDraft(current => ({ ...current, name }))} placeholder="e.g. Department assembly" />
       <Field label="Location" value={eventDraft.location} onChangeText={location => setEventDraft(current => ({ ...current, location }))} placeholder="e.g. Main hall" />
-      <Field label="Date (YYYY-MM-DD)" value={eventDraft.date} onChangeText={date => setEventDraft(current => ({ ...current, date }))} />
-      <Field label="Event time (AM/PM)" value={eventDraft.time} onChangeText={time => setEventDraft(current => ({ ...current, time }))} placeholder="e.g. 2:30 PM" />
+      <EventDateTimeFields
+        date={eventDraft.date}
+        time={eventDraft.time}
+        disabled={busy}
+        onChangeDate={date => setEventDraft(current => ({ ...current, date }))}
+        onChangeTime={time => setEventDraft(current => ({ ...current, time }))}
+      />
+      <ErrorText>{error}</ErrorText>
       <Button disabled={busy} onPress={() => run(async () => {
         const id = Crypto.randomUUID();
-        const localEvent = createEvent(data, user, { ...eventDraft, time: parseTwelveHourTime(eventDraft.time) }, id).events.at(-1);
+        const localEvent = createEvent(data, user, eventDraft, id).events.at(-1);
         let createdLocally = false;
         if (!online) createdLocally = true;
         else {
@@ -521,7 +528,7 @@ export default function AppScreen() {
         return { createdLocally };
       }, result => {
         setCreateEventOpen(false);
-        setEventDraft({ name: '', location: '', date: localDate(), time: currentTwelveHourTime() });
+        setEventDraft({ name: '', location: '', date: localDate(), time: currentTimeValue() });
         setNotice(result.createdLocally
           ? 'Event saved on this device only. Students will not be notified; share it in your group chat. It will upload with attendance.'
           : 'Event created and published.');
