@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { eventForToday, eventsForToday, groupEventsByPhase, isEventPast, sortEventsByDate } from './today-event.mjs';
+import { eventDayLabel, eventForToday, eventsForToday, groupEventsByPhase, isEventPast, sortEventsByDate } from './today-event.mjs';
 import { currentTimeValue, formatTwelveHourTime } from './event-time.mjs';
 import EventDateTimeFields from './EventDateTimeFields';
 import { StatusBar } from 'expo-status-bar';
@@ -146,7 +146,58 @@ function RecordList({ records }) {
   </Card>) : <Muted>No attendance records yet.</Muted>;
 }
 
-function History({ events, onManage, onViewRecords }) {
+function eventDateBadge(event) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(event.date || '');
+  if (!match) return { month: '', day: '' };
+  const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+  if (Number.isNaN(parsed.getTime())) return { month: '', day: '' };
+  return {
+    month: parsed.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
+    day: String(parsed.getDate()).padStart(2, '0'),
+  };
+}
+
+function eventCardStatus(event) {
+  if (isEventPast(event)) return { label: 'ENDED', style: styles.eventStatusEnded };
+  if (event.createdLocally) return { label: 'LOCAL ONLY', style: styles.eventStatusLocal };
+  if (event.date === localDate() && event.time <= currentTimeValue()) {
+    return { label: 'LIVE', style: styles.eventStatusLive };
+  }
+  return { label: 'UPCOMING', style: styles.eventStatusUpcoming };
+}
+
+function EventCard({ event, onOpen, onScan, onViewRecords }) {
+  const badge = eventDateBadge(event);
+  const status = eventCardStatus(event);
+  const past = isEventPast(event);
+  const live = status.label === 'LIVE';
+  const checkedIn = event.attendees.length;
+  return <Card>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${event.name}`} onPress={onOpen} style={({ pressed }) => [styles.eventCardTop, pressed && styles.buttonMuted]}>
+      <View style={styles.eventDateBadge}>
+        <Text style={styles.eventDateMonth}>{badge.month}</Text>
+        <Text style={styles.eventDateDay}>{badge.day}</Text>
+      </View>
+      <View style={styles.eventCardMain}>
+        <View style={styles.eventCardTitleRow}>
+          <Text numberOfLines={2} style={styles.eventCardName}>{event.name}</Text>
+          <Text style={[styles.eventStatus, status.style]}>{status.label}</Text>
+        </View>
+        <Text style={styles.eventCardMeta}>{eventDayLabel(event)} / {formatTwelveHourTime(event.time)}</Text>
+        <Text numberOfLines={1} style={styles.eventCardMeta}>{event.location}</Text>
+        <Text style={styles.eventCardAttendance}>{checkedIn} student{checkedIn === 1 ? '' : 's'} checked in</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+    </Pressable>
+    {past
+      ? <Button secondary onPress={onViewRecords}>View attendance</Button>
+      : live
+        ? <Button onPress={onScan}>Scan attendance</Button>
+        : <Button secondary onPress={onOpen}>Manage event</Button>}
+  </Card>;
+}
+
+function History({ events, onScan, onManage, onViewRecords }) {
   const grouped = groupEventsByPhase(events);
   const sections = [
     ['today', 'Today', grouped.today],
@@ -160,11 +211,10 @@ function History({ events, onManage, onViewRecords }) {
         <Text style={styles.eventSectionTitle}>{title}</Text>
         <Text style={styles.eventSectionCount}>{list.length} event{list.length === 1 ? '' : 's'}</Text>
       </View>
-      {list.map(event => <Card key={event.id}><EventSummary event={event} />
-        <Muted>{event.attendees.length} students checked in</Muted>
-        <Button secondary onPress={() => onManage(event.id)}>{isEventPast(event) ? 'Open event' : 'Manage event'}</Button>
-        <LinkButton onPress={() => onViewRecords(event.id)}>View attendance</LinkButton>
-      </Card>)}
+      {list.map(event => <EventCard key={event.id} event={event}
+        onOpen={() => onManage(event.id)}
+        onScan={() => onScan(event.id)}
+        onViewRecords={() => onViewRecords(event.id)} />)}
     </View>)}
   </>;
 }
@@ -416,6 +466,7 @@ export default function AppScreen() {
   else if (screen === 'history') content = <>
     <Button icon="add-outline" onPress={() => { setError(''); setCreateEventOpen(true); }}>Create event</Button>
     <History events={assignedEvents} onManage={id => go('event', { eventId: id })}
+      onScan={id => go('scanner', { eventId: id, scanMode: 'time-in' })}
       onViewRecords={id => go('event-records', { eventId: id })} />
   </>;
   else if (screen === 'event-records' && event) {
