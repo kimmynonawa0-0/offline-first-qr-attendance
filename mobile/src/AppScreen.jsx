@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
-import { eventForToday, eventsForToday, isEventPast, sortEventsByDate } from './today-event.mjs';
+import { eventForToday, eventsForToday, groupEventsByPhase, isEventPast, sortEventsByDate } from './today-event.mjs';
 import { currentTimeValue, formatTwelveHourTime } from './event-time.mjs';
 import EventDateTimeFields from './EventDateTimeFields';
 import { StatusBar } from 'expo-status-bar';
@@ -147,12 +147,25 @@ function RecordList({ records }) {
 }
 
 function History({ events, onManage, onViewRecords }) {
-  return <>{events.length === 0 && <Muted>No events found.</Muted>}
-    {events.map(event => <Card key={event.id}><EventSummary event={event} />
-      <Muted>{event.attendees.length} students checked in</Muted>
-      <Button secondary onPress={() => onManage(event.id)}>{isEventPast(event) ? 'Open event' : 'Manage event'}</Button>
-      <LinkButton onPress={() => onViewRecords(event.id)}>View attendance</LinkButton>
-    </Card>)}
+  const grouped = groupEventsByPhase(events);
+  const sections = [
+    ['today', 'Today', grouped.today],
+    ['upcoming', 'Upcoming', grouped.upcoming],
+    ['past', 'Past', grouped.past],
+  ];
+  return <>
+    {events.length === 0 && <Muted>No events yet. Create your first event to start scanning.</Muted>}
+    {sections.filter(([, , list]) => list.length > 0).map(([key, title, list]) => <View key={key} style={styles.eventSection}>
+      <View style={styles.eventSectionHeader}>
+        <Text style={styles.eventSectionTitle}>{title}</Text>
+        <Text style={styles.eventSectionCount}>{list.length} event{list.length === 1 ? '' : 's'}</Text>
+      </View>
+      {list.map(event => <Card key={event.id}><EventSummary event={event} />
+        <Muted>{event.attendees.length} students checked in</Muted>
+        <Button secondary onPress={() => onManage(event.id)}>{isEventPast(event) ? 'Open event' : 'Manage event'}</Button>
+        <LinkButton onPress={() => onViewRecords(event.id)}>View attendance</LinkButton>
+      </Card>)}
+    </View>)}
   </>;
 }
 
@@ -402,7 +415,7 @@ export default function AppScreen() {
   </>;
   else if (screen === 'history') content = <>
     <Button icon="add-outline" onPress={() => { setError(''); setCreateEventOpen(true); }}>Create event</Button>
-    <History events={sortEventsByDate(assignedEvents)} onManage={id => go('event', { eventId: id })}
+    <History events={assignedEvents} onManage={id => go('event', { eventId: id })}
       onViewRecords={id => go('event-records', { eventId: id })} />
   </>;
   else if (screen === 'event-records' && event) {
