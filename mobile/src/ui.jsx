@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { SlideInDown, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { Animated as RNAnimated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -250,8 +250,28 @@ export function ScanCorners() {
 }
 
 export function ModalFrame({ title, onClose, children, busy = false, dismissOnBackdrop = false, showClose = true }) {
-  const touchStartY = useRef(null);
+  const [dragY] = useState(() => new RNAnimated.Value(0));
+  const closeState = useRef({ busy, onClose });
+  useEffect(() => { closeState.current = { busy, onClose }; }, [busy, onClose]);
+  const close = () => { if (!closeState.current.busy) closeState.current.onClose(); };
   const dismiss = () => { if (!busy) onClose(); };
+  useEffect(() => {
+    dragY.setValue(28);
+    RNAnimated.timing(dragY, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+  }, [dragY]);
+  function settleDrag() {
+    RNAnimated.spring(dragY, { toValue: 0, damping: 20, stiffness: 220, useNativeDriver: true }).start();
+  }
+  function onDragMove(_, gesture) { dragY.setValue(Math.max(0, gesture.dy)); }
+  function onDragRelease(_, gesture) {
+    if (closeState.current.busy) { settleDrag(); return; }
+    if (gesture.dy > 96 || gesture.vy > 0.9) {
+      RNAnimated.timing(dragY, { toValue: 600, duration: 160, useNativeDriver: true }).start(close);
+    } else {
+      settleDrag();
+    }
+  }
+  function onDragTerminate() { settleDrag(); }
   return <Modal visible transparent animationType="fade" onRequestClose={() => !busy && onClose()}>
     <SafeAreaView testID="app-modal" accessibilityViewIsModal style={styles.overlay}>
       {dismissOnBackdrop && <Pressable
@@ -261,18 +281,17 @@ export function ModalFrame({ title, onClose, children, busy = false, dismissOnBa
         style={StyleSheet.absoluteFill}
       />}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
-        <Animated.View entering={SlideInDown.duration(220)} style={styles.modalCard}>
+        <RNAnimated.View style={[styles.modalCard, { transform: [{ translateY: dragY }] }]}>
           <View
-            accessibilityRole={dismissOnBackdrop ? 'button' : undefined}
-            accessibilityLabel={dismissOnBackdrop ? 'Swipe down or tap to go back' : undefined}
-            onStartShouldSetResponder={dismissOnBackdrop ? () => true : undefined}
-            onMoveShouldSetResponder={dismissOnBackdrop ? (_, gesture) => Math.abs(gesture.dy) > 6 : undefined}
-            onResponderGrant={dismissOnBackdrop ? event => { touchStartY.current = event.nativeEvent.pageY; } : undefined}
-            onResponderRelease={dismissOnBackdrop ? event => {
-              const distance = event.nativeEvent.pageY - (touchStartY.current ?? event.nativeEvent.pageY);
-              touchStartY.current = null;
-              if (distance > 64) dismiss();
-            } : undefined}
+            accessibilityRole="button"
+            accessibilityLabel={busy ? undefined : 'Swipe down to close'}
+            accessibilityState={{ disabled: busy }}
+            onStartShouldSetResponder={() => !busy}
+            onMoveShouldSetResponder={(_, gesture) => !busy
+              && gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx)}
+            onResponderMove={onDragMove}
+            onResponderRelease={onDragRelease}
+            onResponderTerminate={onDragTerminate}
             style={styles.modalGripHitArea}
           >
             <View style={styles.modalGrip} />
@@ -282,7 +301,7 @@ export function ModalFrame({ title, onClose, children, busy = false, dismissOnBa
             {children}
             {showClose && <LinkButton disabled={busy} onPress={onClose}>Close</LinkButton>}
           </ScrollView>
-        </Animated.View>
+        </RNAnimated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   </Modal>;
@@ -357,7 +376,7 @@ export const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.86)', justifyContent: 'flex-end', padding: 12 },
   modalKeyboard: { width: '100%', maxWidth: 500, maxHeight: '92%', alignSelf: 'center', justifyContent: 'flex-end' },
   modalCard: { maxHeight: '100%', backgroundColor: colors.panelRaised, borderWidth: 1, borderColor: colors.line, borderRadius: radius.xl, overflow: 'hidden' },
-  modalGripHitArea: { minHeight: 28, alignItems: 'center', justifyContent: 'center' },
+  modalGripHitArea: { minHeight: 36, alignItems: 'center', justifyContent: 'center' },
   modalGrip: { width: 48, height: 4, borderRadius: 2, backgroundColor: colors.grip, alignSelf: 'center', marginTop: 10 },
   modalContent: { padding: 20, gap: 10 },
   qr: { alignItems: 'center', padding: 20, backgroundColor: colors.paper, borderRadius: 15, gap: 12 },
