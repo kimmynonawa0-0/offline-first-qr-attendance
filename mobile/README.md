@@ -5,25 +5,12 @@ The mobile account flow follows the revised faculty-roster design, not the old s
 The browser prototype is retained for comparison. This is a native interface,
 not a WebView wrapper.
 
-## Run with Expo Go
-
-Use a current Node.js LTS release (Node 22.13 or newer) and an Expo Go version
-compatible with Expo SDK 57.
-
-```sh
-cd mobile
-npm ci
-npx expo start
-```
-
-Scan the development QR with Expo Go on Android. Keep your phone and computer
-on the same network. To preview in a browser, run `npm run web`.
-
 Both app roles use the same student-ID login. The API determines whether the
 account is a student or an event organizer. On the server, `ADMIN_ID` and
-`ADMIN_PASSWORD` seed the legacy organizer account; the separate `MANAGER_ID`
-and `MANAGER_PASSWORD` seed the system-manager website account. The IDs and
-passwords must be distinct, and both passwords must be at least 12 characters.
+`ADMIN_PASSWORD` seed the legacy organizer account; the separate
+`MANAGER_USERNAME` and `MANAGER_PASSWORD` seed the system-manager website
+account. The username must differ from the organizer ID, and both passwords
+must be at least 12 characters.
 Open the API URL with `/manager` to manage student accounts, import rosters,
 grant organizer access, create and assign events, and review synced attendance.
 Only the system-manager role can use its tools. Organizers use the NORWEScan PWA
@@ -80,7 +67,7 @@ scanner screen. A denied permission blocks scanning until access is granted.
 
 For the PWA, build the web export with `npm run build:web`. This creates a
 versioned service worker that caches the exported app files and serves the app
-shell when offline. It does not cache API responses or replace the native APK.
+shell when offline. It does not cache API responses.
 The PWA remembers the active user's ID and role in IndexedDB so the same account
 opens after a browser restart. Explicit logout clears that marker. Browser
 passwords are removed from IndexedDB during migration and are kept only in memory
@@ -159,8 +146,8 @@ successfully signed in online once on the same device; roster-imported accounts
 cannot authenticate offline until then. When online sign-in fails due to a
 network error, timeout, or temporary server error, the app may use the protected
 device credential. Invalid-password and access-denied responses never fall back
-to offline login. Test a standalone APK in airplane mode to validate cold launch
-independently of Expo Go and Metro.
+to offline login. Test the exported PWA in airplane mode to validate cold launch
+independently of the dev server and Metro.
 
 The API and manager website are in `../server/`; see its README for setup.
 Roster imports and event assignments are saved in shared PostgreSQL. Students
@@ -173,12 +160,11 @@ password changes on another device, an offline device may continue accepting
 its cached password until it reconnects and the server validates it.
 
 For local Expo testing, configure `EXPO_PUBLIC_API_URL` in
-`mobile/.env.local` and restart Expo. For an APK, set the same variable in the
-Expo project's EAS `preview` environment; the preview build profile is bound to
-that environment. This URL is included in the app, so use the public HTTPS API
-address for your deployment, never a database URL, username, or password. The
-placeholder host above is not a real service address. All phones need a reachable API
-endpoint. Organizer scans remain on the phone until the organizer taps Sync.
+`mobile/.env.local` and restart Expo. This URL is included in the app, so use
+the public HTTPS API address for your deployment, never a database URL,
+username, or password. The placeholder host above is not a real service
+address. All phones need a reachable API endpoint. Organizer scans remain on
+the phone until the organizer taps Sync.
 Student attendance history shows server-confirmed records after refresh.
 Students can refresh their own server-synced history from Home or Records while
 online; refreshed records are cached in SQLite for offline viewing. The API
@@ -231,23 +217,6 @@ The browser smoke tests use the exported `dist/` bundle and headless Microsoft
 Edge on Windows. On other platforms, install Chromium using
 `npx playwright install chromium` first. They cover the forms and navigation,
 but do not replace real-device camera testing.
-
-## Standalone Android APK
-
-`eas.json` includes a preview APK profile. Before building, set
-`EXPO_PUBLIC_API_URL` in the EAS `preview` environment to the deployed Render API
-URL. Then sign in to your Expo account and link this project if needed:
-
-```sh
-npx eas-cli@latest login
-npx eas-cli@latest build:configure
-npx eas-cli@latest build --platform android --profile preview
-```
-
-Download and install the resulting APK. The preview profile runs independently
-of Expo Go and Metro. App identifiers are currently `com.edgesync.norwescan`;
-choose final identifiers before distribution. Launcher artwork is still the Expo
-starter artwork; branding work is separate from this behavior migration.
 
 Before a defense, test on a real phone: camera permission allowed/denied,
 QR scanning between two phones, organizer check-in, duplicate scans, keyboard
