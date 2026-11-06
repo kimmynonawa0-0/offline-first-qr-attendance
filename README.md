@@ -1,13 +1,3 @@
-## Mobile Prototype
-
-The React Native + Expo migration lives in [`mobile/`](mobile/README.md).
-Run `npm install` and `npx expo start` from that directory to use Expo Go.
-The original browser prototype remains in `prototype/` for reference. The mobile
-app now uses one student-ID login, faculty roster imports, and a mandatory
-first-login password change. The optional server in `server/` uses PostgreSQL
-for shared roster accounts and student login; attendance remains local until
-the organizer syncs it. See the mobile and server READMEs for setup.
-
 <div align="center">
   <h1>⬛ EdgeSync</h1>
   <p><b>Offline-First QR Attendance Engine</b></p>
@@ -32,7 +22,7 @@ This repository contains the core implementation and architectural documentation
 EdgeSync is built to solve a recurring problem in Philippine universities: **network congestion during large-scale events renders traditional web-based attendance systems unusable.** The system shifts critical validation and storage logic to the edge (local scanning devices), ensuring zero-downtime logging regardless of venue infrastructure.
 
 This repo is structured around a **proof-of-concept implementation**, focusing on:
-- Cryptographic QR payload validation
+- Roster-based validation of scanned attendance
 - Local state persistence using embedded databases
 - Asynchronous reconciliation with a central cloud server
 
@@ -54,7 +44,7 @@ Organizers are forced to revert to inefficient **pen-and-paper tracking**, which
 EdgeSync eliminates real-time cloud dependency by shifting data validation and storage directly to the **edge** (the local scanning device). This architecture guarantees:
 
 - ✅ **Zero-downtime** event logging regardless of venue infrastructure
-- ✅ **Cryptographic verification** of QR payloads without querying a live database
+- ✅ **Roster-based verification** of scans without querying a live database
 - ✅ **Asynchronous state reconciliation** when network connectivity is restored
 
 ---
@@ -63,10 +53,32 @@ EdgeSync eliminates real-time cloud dependency by shifting data validation and s
 
 | Component | Description |
 | :--- | :--- |
-| **Cryptographic Edge Validation** | Student QR payloads are embedded with secure HMAC signatures. The local offline scanner verifies a code's authenticity instantly, preventing spoofing without live database queries. |
-| **Local State Persistence** | Scanned records are immediately committed to an embedded local database (e.g., SQLite). This ensures high-throughput, latency-free scanning by decoupling from remote APIs. |
-| **Asynchronous State Reconciliation** | Upon network restoration, the system packages verified batch logs and pushes them to the central cloud server. Conflict resolution ensures duplicate scans are deduplicated before final insertion. |
+| **Local Roster Validation** | QR codes carry the scanned student ID. The local offline scanner checks it against the roster downloaded for the assigned event and rejects unknown IDs instantly, without live database queries. |
+| **Local State Persistence** | Scanned records are immediately committed to an embedded local database (SQLite on devices, IndexedDB in the browser PWA). This ensures high-throughput, latency-free scanning by decoupling from remote APIs. |
+| **Asynchronous State Reconciliation** | Upon network restoration, the system packages pending batch logs and pushes them to the central cloud server. Duplicate scans are deduplicated before final insertion. |
+
+---
+
+## 🛠️ Tech Stack
+
+Only the stacks actually used in this proof of concept:
+
+| Layer | Technology |
+| :--- | :--- |
+| Mobile / PWA | React Native Web + Expo SDK 57, Expo Router, PWA service worker |
+| Local persistence | `expo-sqlite` on devices and IndexedDB in the browser PWA |
+| Scanning and QR | `expo-camera`, `expo-haptics`, `react-native-qrcode-svg` |
+| API server | Node.js (`node:http` + `node:crypto`) with PostgreSQL via `pg` |
+| Roster import | CSV and Excel parsing via `@e965/xlsx` |
+| Quality checks | Node.js test runner, ESLint, Playwright, TypeScript config check |
 
 ---
 
 ## 🗂️ Repository Structure
+
+| Path | Purpose |
+| :--- | :--- |
+| `mobile/` | Expo / React Native app with the offline PWA export, scanner, dashboards, records, and sync |
+| `server/` | Node.js attendance API and system-manager console backed by PostgreSQL |
+| `prototype/` | Browser prototype and admin authentication flow checks |
+| `mobile/design/ui-concepts/` | Generated visual direction references for the app |
