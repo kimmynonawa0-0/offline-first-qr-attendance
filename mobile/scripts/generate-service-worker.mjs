@@ -63,7 +63,12 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/index.html')),
+      fetch(request)
+        .then((response) => {
+          if (response.ok) return response;
+          return caches.match('/index.html').then((cached) => cached || response);
+        })
+        .catch(() => caches.match('/index.html').then((cached) => cached || Response.error())),
     );
     return;
   }

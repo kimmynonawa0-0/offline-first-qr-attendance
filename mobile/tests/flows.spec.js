@@ -51,6 +51,18 @@ test('PWA serves the app shell after an offline relaunch', async ({ page, contex
   await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
 });
 
+test('PWA serves the app shell when a deep link is reloaded online', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+
+  await page.goto('/records');
+  await expect(page.getByText('Not found', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Student ID', exact: true })).toBeVisible();
+});
+
 test('unified login, required password change, roster upload and student login', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
