@@ -123,6 +123,12 @@ root, such as `https://<your-api-host>`; do not append `/health` or
 `/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Render
 assigns to the static site, then redeploy the API. The release build fails early
 if the API URL is missing, not HTTPS, or contains a route path.
+The web export is a single-page app, so add a **Rewrite** rule in the static
+site's **Redirects/Rewrites** settings: source `/*`, destination
+`/index.html`. A rewrite serves the app shell without changing the address bar,
+so reloading or reopening a route such as `/records` no longer returns a 404.
+Use **Rewrite**, not Redirect. Render still serves existing files and assets
+before applying the rule.
 The static PWA URL is distinct from the system-manager console (`/manager`).
 Share the static PWA URL with students and organizers; the API root does not host
 an organizer portal. The manager console relies on role-based API authorization;
