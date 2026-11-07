@@ -11,7 +11,7 @@
     button,input,select{font:inherit}button{border:0;border-radius:10px;padding:12px 16px;background:var(--yellow);color:#15160e;font-weight:800;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.secondary{background:#2d3929;color:var(--ink);border:1px solid #536349}.danger{background:#512c27;color:#ffe7df;border:1px solid #87483e}
     .shell{max-width:1120px;margin:auto;padding:24px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:8px 0 20px}.brand{font-weight:950;letter-spacing:.08em}.brand span{color:var(--yellow)}.tag{color:var(--muted);font-size:.85rem}
     .panel{background:linear-gradient(145deg,#1b2119,#151914);border:1px solid var(--line);border-radius:18px;padding:22px;margin:18px 0;box-shadow:0 18px 50px #0003}.login{max-width:440px;margin:12vh auto}.hidden{display:none!important}h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.6rem,4vw,2.35rem);line-height:1.12}h2{font-size:1.2rem}p,.muted{color:var(--muted)}label{display:block;color:var(--muted);font-size:.9rem;margin:12px 0 5px}input,select{width:100%;padding:12px;background:#10140f;color:var(--ink);border:1px solid #46503f;border-radius:9px}input[type=file]{padding:9px}.password-field{position:relative}.password-field input{padding-right:52px}.password-toggle{position:absolute;right:5px;top:50%;transform:translateY(-50%);padding:8px;background:transparent;color:var(--muted);border:0;transition:color .2s,transform .18s}.password-toggle:hover{color:var(--yellow)}.password-toggle:active{transform:translateY(-50%) scale(.9)}.password-toggle:focus-visible{outline:2px solid var(--yellow);outline-offset:1px}.password-toggle svg{display:block;width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;overflow:visible}.password-toggle svg.eye-change{animation:eye-change .24s ease-out}@keyframes eye-change{0%{opacity:.35;transform:scale(.72) rotate(-8deg)}65%{opacity:1;transform:scale(1.12) rotate(3deg)}100%{transform:scale(1) rotate(0)}}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:14px}.metric{font-size:1.8rem;font-weight:900;color:var(--yellow)}.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:18px 0}.tabs{display:flex;overflow:auto;gap:8px;margin:18px 0}.tabs button{white-space:nowrap}.tabs .secondary{background:transparent}.status{min-height:1.5em;color:var(--yellow);margin:10px 0}.error{color:var(--red)}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:640px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 9px;font-size:.8rem}.pill.on{border-color:#63844a;color:#bde095}.pill.off{border-color:#87534b;color:#ffb6a7}.picklist{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px}.check{display:flex;align-items:center;gap:9px;padding:6px 3px;color:var(--ink)}.check input{width:auto}
-    .section-group{border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:12px}.section-group summary{cursor:pointer;color:var(--yellow);font-weight:800;padding:6px}.section-group summary .muted{float:right;font-weight:400}.student-select{width:auto;vertical-align:middle;margin-right:8px}.section-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0}.student-actions{white-space:nowrap}
+    .section-group{border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:12px}.section-group summary{cursor:pointer;color:var(--yellow);font-weight:800;padding:6px}.section-group summary .muted{float:right;font-weight:400}.student-select{width:auto;vertical-align:middle;margin-right:8px}.section-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0}.student-actions{white-space:nowrap}.picker-results{position:relative;margin-top:10px}.picker-results .results{position:absolute;top:100%;left:0;right:0;max-height:300px;overflow:auto;background:#10140f;border:1px solid #46503f;border-radius:9px;box-shadow:0 18px 50px #000c;z-index:40}.picker-results button{display:block;width:100%;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);padding:12px 14px;text-align:left;font-weight:600;cursor:pointer}.picker-results button:last-child{border-bottom:0}.picker-results button:hover,.picker-results button.active{background:#1f2c1b;color:var(--yellow)}.picker-results .results{margin:0;padding:0}.picker-results .results p{margin:0;padding:12px 14px}
     dialog{max-width:min(440px,calc(100% - 28px));background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:22px}dialog::backdrop{background:#000a}
     @media(max-width:600px){.shell{padding:14px}.panel{padding:16px}.top{align-items:flex-start}.top .tag{max-width:130px;text-align:right}}
   </style>
@@ -84,7 +84,8 @@
       </section>
       <section id="page-organizers" class="page panel hidden">
         <h1>Organizer access</h1><p>Grant scanning access to a student already in the roster. Their existing student ID and password are used. Disabling access revokes online sessions.</p>
-        <div class="grid"><div><label for="student-picker">Student</label><select id="student-picker"></select></div><div class="toolbar" style="align-items:end"><button id="promote">Grant organizer access</button></div></div>
+        <div class="grid"><div><label for="student-picker">Student</label><input id="student-picker" type="text" maxlength="200" placeholder="Search by student ID or name" autocomplete="off"></div><div class="toolbar" style="align-items:end"><button id="promote">Grant organizer access</button></div></div>
+        <div id="student-results" class="picker-results hidden"></div>
         <div id="organizer-list"></div>
       </section>
       <section id="page-events" class="page panel hidden">
@@ -264,14 +265,27 @@
       const d = state.overview; if (!d) return;
       $('#page-overview').innerHTML = `<h1>System overview</h1><p>Shared records from the attendance server.</p><div class="grid"><div class="panel"><div class="metric">${d.students.length}</div><div class="muted">Students</div></div><div class="panel"><div class="metric">${d.organizers.filter(x=>x.enabled && x.access_level==='organizer').length}</div><div class="muted">Active organizers</div></div><div class="panel"><div class="metric">${d.events.length}</div><div class="muted">Events</div></div><div class="panel"><div class="metric">${d.attendanceCount}</div><div class="muted">Synced check-ins</div></div></div><h2>Recent events</h2>${eventTable(d.events.slice(0,6))}<h2>Administrator activity</h2>${table(['When','Who','Action','Details'],(d.audit||[]).map(item=>`<tr><td>${esc(item.created_at)}</td><td>${esc(item.actor_name)} (${esc(item.actor_id)})</td><td>${esc(item.action.replaceAll('_',' '))}</td><td>${esc(JSON.stringify(item.details))}</td></tr>`).join(''))}`;
       const available = d.students.filter(student => !d.organizers.some(org => org.id === student.id));
-      $('#student-picker').innerHTML = available.length ? available.map(student=>`<option value="${esc(student.id)}">${esc(student.id)} · ${esc(student.name)} (${esc(student.section)})</option>`).join('') : '<option value="">No unassigned students</option>';
       $('#promote').disabled = !available.length;
+      renderStudentResults($('#student-picker').value);
       $('#organizer-list').innerHTML = `<h2>Organizer accounts</h2>${table(['Student ID','Name','Access','Events','Status','Action'],d.organizers.map(org=>`<tr><td>${esc(org.id)}</td><td>${esc(org.name)}</td><td>${esc(org.access_level==='manager'?'System manager':'Organizer')}</td><td>${org.assigned_events}</td><td><span class="pill ${org.enabled?'on':'off'}">${org.enabled?'Active':'Disabled'}</span></td><td>${org.access_level==='manager'?'<span class="muted">Protected</span>':`<button class="${org.enabled?'danger':'secondary'}" data-toggle="${esc(org.id)}" data-enabled="${!org.enabled}">${org.enabled?'Revoke':'Restore'}</button>`}</td></tr>`).join(''))}`;
       const active = d.organizers.filter(org=>org.enabled && org.access_level==='organizer');
       $('#event-organizers').innerHTML = active.length ? active.map(org=>`<label class="check"><input type="checkbox" value="${esc(org.id)}">${esc(org.name)} · ${esc(org.id)}</label>`).join('') : '<p class="muted">Grant organizer access before assigning an event.</p>';
       $('#create-event').disabled = !active.length;
       $('#event-list').innerHTML = `<h2>Events</h2>${eventTable(d.events, true)}`;
       renderStudentDirectory(d.students);
+    }
+    function availableStudents(students = state.overview?.students) {
+      const organizers = state.overview?.organizers || [];
+      return (students || []).filter(student => !organizers.some(org => org.id === student.id));
+    }
+    function renderStudentResults(query) {
+      const container = $('#student-results');
+      const value = String(query ?? $('#student-picker').value ?? '').trim().toLowerCase();
+      if (!value) { container.classList.add('hidden'); container.innerHTML = ''; return; }
+      const matches = availableStudents().filter(student => [student.id, student.name, student.section].some(field => String(field || '').toLowerCase().includes(value)));
+      const found = matches.slice(0, 50);
+      container.innerHTML = found.length ? found.map(student=>`<button type="button" class="picker-result" data-organizer-select="${esc(student.id)}"><span>${esc(student.id)}</span><span>${esc(student.name)}</span><span class="muted">${esc(student.section)}</span></button>`).join('') : `<p class="muted">No student matches "${esc(value)}". They may already have organizer access or may not be imported yet.</p>`;
+      container.classList.toggle('hidden', !found.length);
     }
     function sectionInfo(section) {
       const value = String(section || '').trim();
@@ -445,9 +459,20 @@
         } catch(error) { message(error.message, true); }
       }
     });
-    $('#promote').addEventListener('click',async()=>{const studentId=$('#student-picker').value;if(!studentId)return;
-      try{await api('/management/organizers',{method:'POST',body:JSON.stringify({studentId})});await refresh();message('Organizer access granted. Their student ID and current password remain the same.');}
+    $('#promote').addEventListener('click',async()=>{
+      const studentId=$('#student-picker').value.trim();
+      const student=(state.overview?.students||[]).find(item=>item.id===studentId);
+      if(!student){message('Search for a student ID or name to select an organizer.',true);return;}
+      if((state.overview?.organizers||[]).some(org=>org.id===student.id)){message('That student already has organizer access.',true);return;}
+      try{await api('/management/organizers',{method:'POST',body:JSON.stringify({studentId})});await refresh();$('#student-picker').value='';renderStudentResults('');message('Organizer access granted. Their student ID and current password remain the same.');}
       catch(error){message(error.message,true);}
+    });
+    $('#student-picker').addEventListener('input',()=>renderStudentResults($('#student-picker').value));
+    $('#student-picker').addEventListener('keydown',event=>{if(event.key==='Escape'){$('#student-picker').value='';renderStudentResults('');}});
+    $('#student-results').addEventListener('click',event=>{
+      const button=event.target.closest('[data-organizer-select]');if(!button)return;
+      $('#student-picker').value=button.dataset.organizerSelect;$('#student-results').classList.add('hidden');
+      const student=(state.overview?.students||[]).find(item=>item.id===button.dataset.organizerSelect);if(student)message(`Selected ${student.name} (${student.id}). Grant organizer access when ready.`);
     });
     $('#organizer-list').addEventListener('click',async event=>{const button=event.target.closest('[data-toggle]');if(!button)return;
       try{await api(`/management/organizers/${encodeURIComponent(button.dataset.toggle)}`,{method:'PATCH',body:JSON.stringify({enabled:button.dataset.enabled==='true'})});await refresh();message('Organizer access updated.');}
