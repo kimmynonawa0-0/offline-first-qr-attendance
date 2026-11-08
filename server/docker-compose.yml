@@ -1,13 +1,41 @@
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: norwescan
       POSTGRES_USER: norwescan
       POSTGRES_PASSWORD: norwescan
-    ports:
-      - "5434:5432"
     volumes:
       - norwescan_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U norwescan -d norwescan"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+  server:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://norwescan:norwescan@postgres:5432/norwescan
+      ADMIN_ID: ${ADMIN_ID:-23-02330}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-replace-with-a-long-private-organizer-password}
+      MANAGER_USERNAME: ${MANAGER_USERNAME:-system-manager}
+      MANAGER_PASSWORD: ${MANAGER_PASSWORD:-replace-with-a-different-long-private-manager-password}
+      PORT: ${PORT:-3000}
+      WEB_ORIGINS: ${WEB_ORIGINS:-}
+    ports:
+      - "${NORWESCAN_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   norwescan_pg:
