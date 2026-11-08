@@ -116,7 +116,7 @@ and standalone builds have separate storage. PWA server sessions for students an
 organizers are saved in IndexedDB; refresh and upload requests use the session
 instead of asking for the password again.
 
-To pilot the PWA on Render, create a **Static Site** from this repository with
+To deploy the PWA on Vercel, use the settings in mobile/vercel.json with
 root directory `mobile`, build command `npm ci && npm run build:web:release`, and
 publish directory `dist`. Set the static site's `EXPO_PUBLIC_API_URL` to the API
 root, such as `https://<your-api-host>`; do not append `/health` or
