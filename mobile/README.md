@@ -120,14 +120,14 @@ To deploy the PWA on Vercel, use the settings in mobile/vercel.json with
 root directory `mobile`, build command `npm ci && npm run build:web:release`, and
 publish directory `dist`. Set the static site's `EXPO_PUBLIC_API_URL` to the API
 root, such as `https://<your-api-host>`; do not append `/health` or
-`/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Render
+`/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Vercel
 assigns to the static site, then redeploy the API. The release build fails early
 if the API URL is missing, not HTTPS, or contains a route path.
 The web export is a single-page app, so add a **Rewrite** rule in the static
 site's **Redirects/Rewrites** settings: source `/*`, destination
 `/index.html`. A rewrite serves the app shell without changing the address bar,
 so reloading or reopening a route such as `/records` no longer returns a 404.
-Use **Rewrite**, not Redirect. Render still serves existing files and assets
+Use **Rewrite**, not Redirect. Vercel still serves existing files and assets
 before applying the rule.
 The static PWA URL is distinct from the system-manager console (`/manager`).
 Share the static PWA URL with students and organizers; the API root does not host
