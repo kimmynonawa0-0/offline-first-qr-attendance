@@ -6,5 +6,7 @@ build
 !.env.example
 npm-debug.log*
 Dockerfile
-docker-compose.yml
+docker-compose*.yml
+Caddyfile
+deploy.sh
 README.md

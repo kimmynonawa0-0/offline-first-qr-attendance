@@ -4,14 +4,15 @@
 // The running server deliberately keeps the existing manager hash in the
 // database when MANAGER_PASSWORD changes, so redeploying does not reset a
 // password. This script applies MANAGER_PASSWORD to the manager row directly.
-// It needs the same DATABASE_URL the Render service uses (the external URL if
-// run from your machine), plus MANAGER_USERNAME and MANAGER_PASSWORD.
+// It needs the same DATABASE_URL the server uses, plus MANAGER_USERNAME and
+// MANAGER_PASSWORD. In Docker, the container already has all three:
 //
-// Usage (PowerShell):
-//   $env:DATABASE_URL='postgres://...'
-//   $env:MANAGER_USERNAME='...'
-//   $env:MANAGER_PASSWORD='...'
-//   node scripts/reset-manager-password.mjs --confirm
+//   cd server
+//   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec server \
+//     node scripts/reset-manager-password.mjs --confirm
+//
+// To run it from a trusted machine against an external database, set
+// DATABASE_URL, MANAGER_USERNAME, and MANAGER_PASSWORD for that shell first.
 //
 // After signing in, change the password and create a fresh recovery code.
 

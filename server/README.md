@@ -7,11 +7,67 @@ PostgreSQL runs in Docker on the same Oracle Cloud host and is the shared source
 organizer access, events, and synced attendance. Organizer phones keep a local SQLite roster and
 assigned event copies so attendance can still be scanned offline.
 
+## Deploy on Oracle Cloud
+
+After the host is prepared, the production deployment is one command. You need:
+
+- A DNS `A` record for `api.example.com` pointing at the Oracle public IP.
+- Inbound TCP `80` and `443` allowed in both the OCI VCN security list and the host firewall
+  (`ufw`, `firewalld`, or `iptables`, depending on the image).
+- Docker Engine with the Compose plugin installed on the VM.
+
+On a fresh Ubuntu VM:
+
+```sh
+curl -fsSL https://get.docker.com | sudo sh
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+Clone the repository and create the environment file:
+
+```sh
+git clone https://github.com/kimmynonawa0-0/offline-first-qr-attendance.git
+cd offline-first-qr-attendance
+cp server/.env.example server/.env
+chmod 600 server/.env
+```
+
+Edit `server/.env` and set the credentials and the API hostname, then run the deployment.
+`deploy.sh` refuses to start while the placeholder passwords or `API_DOMAIN` remain.
+Add the Vercel PWA origin to `WEB_ORIGINS` after the PWA is deployed; until then the API logs a
+warning and the browser PWA is blocked by CORS.
+
+```sh
+cd server
+./deploy.sh
+```
+
+If Git did not preserve the executable bit (for example, after copying files from
+Windows), run `chmod +x deploy.sh` once.
+
+`deploy.sh` validates `.env`, starts PostgreSQL, the Node API, and Caddy, and waits for the
+services to become healthy. Caddy obtains and renews the HTTPS certificate for `API_DOMAIN` and
+proxies requests to the API. The production Compose override does not publish the API port on the
+host; Caddy is the only public entry point. Local `docker compose up` still publishes port `3000`
+for LAN testing.
+
+Verify:
+
+```sh
+curl https://api.example.com/health
+```
+
+Then open `https://api.example.com/manager`. The first manager login requires a password change.
+Rerun `./deploy.sh` after changing `.env` or pulling new code.
+
 ## Local setup
 
 Install Node.js 22+ and Docker.
 
-From `server/`, Docker Compose starts PostgreSQL and the Node API:
+For local development, from `server/`, Docker Compose starts PostgreSQL and the Node API without
+Caddy:
 
 ```sh
 docker compose up -d --build
@@ -26,9 +82,12 @@ ADMIN_ID=<your-organizer-account-id>
 ADMIN_PASSWORD=<unique-private-password>
 MANAGER_USERNAME=<your-private-manager-username>
 MANAGER_PASSWORD=<different-unique-private-manager-password>
-PORT=3000
 WEB_ORIGINS=<your-vercel-pwa-origin>
+API_DOMAIN=api.example.com
 ```
+
+`API_DOMAIN` is used only by `deploy.sh` and Caddy. It is not needed for local
+`docker compose up`.
 
 For running the API without Docker against a separate PostgreSQL instance, start PostgreSQL and set
 `DATABASE_URL=postgres://<db-user>:<db-password>@<db-host>:5434/<db-name>`.
@@ -45,9 +104,8 @@ differ from the organizer ID, and both passwords must be at least 12 characters.
 may be the same password used for a previous account; stored password hashes cannot be read or copied
 automatically. Set `MANAGER_PASSWORD` to the password you want to keep.
 
-On Oracle, set all five variables through `server/.env` or the service environment before deploying.
-Open the API at the configured port and the management website at `/manager`; the first manager login
-requires a private password change.
+In production, `deploy.sh` starts the API behind Caddy. Open the management website at
+`https://<API_DOMAIN>/manager`; the first manager login requires a private password change.
 
 ## System manager operations
 
@@ -60,15 +118,14 @@ attendance, and inspect the audit log.
 A system manager can also delete an event that already has check-ins after re-entering
 the manager password; this force deletion removes the event and its attendance records.
 
-If the recovery code is also lost, a developer with database access can restore the manager account from a
-trusted machine using the `MANAGER_PASSWORD` value already configured for the service:
+If the recovery code is also lost, run the recovery script inside the server container on the
+Oracle host. The container already has `DATABASE_URL`, `MANAGER_USERNAME`, and `MANAGER_PASSWORD`
+from Compose:
 
 ```sh
 cd server
-$env:DATABASE_URL='<external database URL>'
-$env:MANAGER_USERNAME='<manager username>'
-$env:MANAGER_PASSWORD='<configured manager password>'
-npm run reset-manager-password -- --confirm
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec server \
+  node scripts/reset-manager-password.mjs --confirm
 ```
 
 The script requires `--confirm`, revokes manager sessions, clears any saved
@@ -82,15 +139,15 @@ explicit script does.
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
 
-For the Vercel-hosted PWA, set the API environment variable `WEB_ORIGINS` to the
-exact HTTPS origin serving the PWA, for example `https://<your-pwa-host>` (no path
-or trailing slash). Multiple origins may be comma-separated. Add local origins
-explicitly for development, such as `http://localhost:8081,http://127.0.0.1:4173`;
-the API does not allow unconfigured browser origins. It handles JSON preflight
-requests and permits only `GET`, `POST`, `DELETE`, and the `Content-Type` and
-`Authorization` headers used by the app. This is browser cross-origin
-configuration, not authentication; API routes still enforce account and
-organizer-session authorization.
+For the Vercel-hosted PWA, set `WEB_ORIGINS` in `server/.env` to the exact HTTPS
+origin serving the PWA, for example `https://<your-pwa-host>` (no path or trailing
+slash). Multiple origins may be comma-separated. Add local origins explicitly for
+development, such as `http://localhost:8081,http://127.0.0.1:4173`; the API does
+not allow unconfigured browser origins. Rerun `./deploy.sh` after changing it. The
+API handles JSON preflight requests and permits only `GET`, `POST`, `DELETE`, and
+the `Content-Type` and `Authorization` headers used by the app. This is browser
+cross-origin configuration, not authentication; API routes still enforce account
+and organizer-session authorization.
 
 ## Migrated flows and sync rules
 
@@ -127,3 +184,16 @@ idle, and the Vercel static PWA is served from Vercel's global CDN, so neither
 side introduces the former Render free-tier sleep behavior. Student passwords
 remain in local SQLite for offline login, so use test data and trusted pilot
 devices.
+
+## Backup
+
+The database lives in the `norwescan_pg` Docker volume. Back it up from the host:
+
+```sh
+cd server
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U norwescan -d norwescan | gzip > backup-$(date +%F).sql.gz
+```
+
+Do not run `docker compose down -v`; the `-v` flag deletes the database volume
+and all roster and attendance data.

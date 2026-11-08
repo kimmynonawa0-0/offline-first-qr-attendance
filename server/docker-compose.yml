@@ -23,8 +23,10 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-replace-with-a-long-private-organizer-password}
       MANAGER_USERNAME: ${MANAGER_USERNAME:-system-manager}
       MANAGER_PASSWORD: ${MANAGER_PASSWORD:-replace-with-a-different-long-private-manager-password}
-      PORT: ${PORT:-3000}
+      PORT: 3000
       WEB_ORIGINS: ${WEB_ORIGINS:-}
+    # Local development only. Do not open this port in the Oracle VCN;
+    # Caddy reaches the API over the Compose network.
     ports:
       - "${NORWESCAN_PORT:-3000}:3000"
     depends_on:
