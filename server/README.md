@@ -62,6 +62,13 @@ curl https://api.example.com/health
 Then open `https://api.example.com/manager`. The first manager login requires a password change.
 Rerun `./deploy.sh` after changing `.env` or pulling new code.
 
+If HTTPS does not come up, confirm the DNS `A` record resolves to the VM and that ports `80` and
+`443` are open, then inspect Caddy:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=100 caddy
+```
+
 ## Local setup
 
 Install Node.js 22+ and Docker.
