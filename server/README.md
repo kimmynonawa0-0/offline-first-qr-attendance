@@ -1,138 +1,78 @@
 # NORWEScan sync API
 
-The Oracle Cloud Always Free Node service serves the system-manager console at `/manager` and the
+The Render Node service serves the system-manager console at `/manager` and the
 attendance API. It does not serve a separate organizer website.
-
-PostgreSQL runs in Docker on the same Oracle Cloud host and is the shared source for rosters,
-organizer access, events, and synced attendance. Organizer phones keep a local SQLite roster and
-assigned event copies so attendance can still be scanned offline.
-
-## Deploy on Oracle Cloud
-
-After the host is prepared, the production deployment is one command. You need:
-
-- A DNS `A` record for `api.example.com` pointing at the Oracle public IP.
-- Inbound TCP `80` and `443` allowed in both the OCI VCN security list and the host firewall
-  (`ufw`, `firewalld`, or `iptables`, depending on the image).
-- Docker Engine with the Compose plugin installed on the VM.
-
-On a fresh Ubuntu VM:
-
-```sh
-curl -fsSL https://get.docker.com | sudo sh
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-Clone the repository and create the environment file:
-
-```sh
-git clone https://github.com/kimmynonawa0-0/offline-first-qr-attendance.git
-cd offline-first-qr-attendance
-cp server/.env.example server/.env
-chmod 600 server/.env
-```
-
-Edit `server/.env` and set the credentials and the API hostname, then run the deployment.
-`deploy.sh` refuses to start while the placeholder passwords or `API_DOMAIN` remain.
-Add the Vercel PWA origin to `WEB_ORIGINS` after the PWA is deployed; until then the API logs a
-warning and the browser PWA is blocked by CORS.
-
-```sh
-cd server
-./deploy.sh
-```
-
-If Git did not preserve the executable bit (for example, after copying files from
-Windows), run `chmod +x deploy.sh` once.
-
-`deploy.sh` validates `.env`, starts PostgreSQL, the Node API, and Caddy, and waits for the
-services to become healthy. Caddy obtains and renews the HTTPS certificate for `API_DOMAIN` and
-proxies requests to the API. The production Compose override does not publish the API port on the
-host; Caddy is the only public entry point. Local `docker compose up` still publishes port `3000`
-for LAN testing.
-
-Verify:
-
-```sh
-curl https://api.example.com/health
-```
-
-Then open `https://api.example.com/manager`. The first manager login requires a password change.
-Rerun `./deploy.sh` after changing `.env` or pulling new code.
-
-If HTTPS does not come up, confirm the DNS `A` record resolves to the VM and that ports `80` and
-`443` are open, then inspect Caddy:
-
-```sh
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=100 caddy
-```
+Neon PostgreSQL is the shared source for rosters, organizer access, events, and
+synced attendance. Organizer phones keep a local SQLite roster and assigned event
+copies so attendance can still be scanned offline.
 
 ## Local setup
 
-Install Node.js 22+ and Docker.
-
-For local development, from `server/`, Docker Compose starts PostgreSQL and the Node API without
-Caddy:
+Install Node.js 22+ and PostgreSQL 17. Docker Compose can start PostgreSQL:
 
 ```sh
-docker compose up -d --build
+docker compose up -d
+npm ci
 ```
 
-Set environment variables in `server/.env` before starting the stack. Docker Compose reads variable
-substitution from that file and passes the configured values to the server container. The compose file
-points the server at the PostgreSQL service internally.
+Set these environment variables before `npm start`:
 
 ```text
+DATABASE_URL=postgres://<db-user>:<db-password>@localhost:5434/<db-name>
 ADMIN_ID=<your-organizer-account-id>
 ADMIN_PASSWORD=<unique-private-password>
 MANAGER_USERNAME=<your-private-manager-username>
-MANAGER_PASSWORD=<different-unique-private-manager-password>
-WEB_ORIGINS=<your-vercel-pwa-origin>
-API_DOMAIN=api.example.com
+MANAGER_PASSWORD=<different-unique-private-password>
+PORT=3000
 ```
 
-`API_DOMAIN` is used only by `deploy.sh` and Caddy. It is not needed for local
-`docker compose up`.
-
-For running the API without Docker against a separate PostgreSQL instance, start PostgreSQL and set
-`DATABASE_URL=postgres://<db-user>:<db-password>@<db-host>:5434/<db-name>`.
-
-For PowerShell, use `$env:DATABASE_URL='...'`, and likewise for the other values, in the terminal
-running the server. A `.env` file is not loaded automatically. These are placeholders, not working
-credentials. Use private values that are unique to your deployment, and never commit them or paste
-them into documentation, source control, screenshots, or the mobile app.
-
-The server creates or migrates its tables at startup. Keep the credentials separate:
-`ADMIN_ID`/`ADMIN_PASSWORD` seed the legacy organizer app account;
-`MANAGER_USERNAME`/`MANAGER_PASSWORD` seed the system-manager website account. The username must
-differ from the organizer ID, and both passwords must be at least 12 characters. The manager password
-may be the same password used for a previous account; stored password hashes cannot be read or copied
-automatically. Set `MANAGER_PASSWORD` to the password you want to keep.
-
-In production, `deploy.sh` starts the API behind Caddy. Open the management website at
-`https://<API_DOMAIN>/manager`; the first manager login requires a private password change.
-
-## System manager operations
-
-Open `https://<your-oracle-api-host>/manager` and sign in with the manager
+For PowerShell, use `$env:DATABASE_URL='...'` (and likewise for the other values)
+in the terminal running the server. A `.env` file is not loaded automatically.
+These are placeholders, not working credentials. Use private values that are
+unique to your deployment, and never commit them or paste them into documentation,
+source control, screenshots, or the mobile app. The server creates or migrates its tables at startup. Keep the credentials
+separate: `ADMIN_ID`/`ADMIN_PASSWORD` seed the legacy organizer app account;
+`MANAGER_USERNAME`/`MANAGER_PASSWORD` seed the system-manager website account.
+The username must differ from the organizer ID, and both passwords must be at
+least 12 characters. The manager password may be the same password used for a
+previous account; stored password hashes cannot be read or copied automatically.
+Set `MANAGER_PASSWORD` to the password you want to keep. On Render, set all five
+variables through the service's private environment settings before deploying.
+Open `https://<your-api-host>/manager` and sign in with the manager
 username/password; its first login requires a private password change. System managers
 can import CSV/Excel rosters, manage student profiles, reset student passwords,
 grant or revoke organizer access, create events, assign organizers, review all
-attendance, and inspect the audit log.
+attendance, and inspect the audit log. A system manager can also delete an
+event that already has check-ins after re-entering the manager password; this
+force deletion removes the event and its attendance records. The student
+directory groups sections by
+program and year. New students and password resets use the section as a temporary
+password and require a password change. Deleting a student revokes their organizer
+access but preserves historical attendance. An event created by an organizer is
+automatically assigned to every active organizer in the same section, including
+events created offline and uploaded later. Event organizers use the PWA/mobile
+app to view and import their own section roster, scan assigned events, and review
+check-ins; they cannot use the system-manager console. Manager APIs enforce this
+role boundary even if an organizer opens `/manager` directly.
 
-A system manager can also delete an event that already has check-ins after re-entering
-the manager password; this force deletion removes the event and its attendance records.
+System managers can change their password from **Account** while signed in. On
+that page, choose **Create recovery code** and store the one-time code in a
+private offline location. It is displayed only once; creating another code
+replaces the previous one. If locked out, choose **Forgot password?** on
+`/manager` and use the manager username and saved code to reset the password. A
+successful reset consumes the code and revokes existing manager sessions. If
+the code is lost, sign in and create a new one; there is no email recovery.
 
-If the recovery code is also lost, run the recovery script inside the server container on the
-Oracle host. The container already has `DATABASE_URL`, `MANAGER_USERNAME`, and `MANAGER_PASSWORD`
-from Compose:
+If the recovery code is also lost, a developer with database access can restore
+the manager account from a trusted machine using the `MANAGER_PASSWORD` value
+already configured for the service:
 
 ```sh
 cd server
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec server \
-  node scripts/reset-manager-password.mjs --confirm
+$env:DATABASE_URL='<external database URL>'
+$env:MANAGER_USERNAME='<manager username>'
+$env:MANAGER_PASSWORD='<configured manager password>'
+npm run reset-manager-password -- --confirm
 ```
 
 The script requires `--confirm`, revokes manager sessions, clears any saved
@@ -141,30 +81,30 @@ password and create a new recovery code immediately after recovering access.
 Redeploying the service does not reset a changed manager password; only this
 explicit script does.
 
-## Browser and mobile web origin
-
 Set `EXPO_PUBLIC_API_URL` in `mobile/.env.local` to the API address, then restart
 Expo. For LAN testing, use the computer's reachable local IP and trusted Wi-Fi.
+For testing across different networks, deploy this API behind HTTPS and point it
+at a managed PostgreSQL database. The database URL and organizer password stay
+on the server and must never be placed in the mobile app.
 
-For the Vercel-hosted PWA, set `WEB_ORIGINS` in `server/.env` to the exact HTTPS
-origin serving the PWA, for example `https://<your-pwa-host>` (no path or trailing
-slash). Multiple origins may be comma-separated. Add local origins explicitly for
-development, such as `http://localhost:8081,http://127.0.0.1:4173`; the API does
-not allow unconfigured browser origins. Rerun `./deploy.sh` after changing it. The
-API handles JSON preflight requests and permits only `GET`, `POST`, `DELETE`, and
-the `Content-Type` and `Authorization` headers used by the app. This is browser
-cross-origin configuration, not authentication; API routes still enforce account
-and organizer-session authorization.
-
-## Migrated flows and sync rules
+For a separately hosted PWA, set the Render API environment variable
+`WEB_ORIGINS` to the exact HTTPS origin serving the PWA, for example
+`https://<your-pwa-host>` (no path or trailing slash). Multiple
+origins may be comma-separated. Add local origins explicitly for development,
+such as `http://localhost:8081,http://127.0.0.1:4173`; the API does not allow
+unconfigured browser origins. It handles JSON preflight requests and permits only
+`GET`, `POST`, `DELETE`, and the `Content-Type` and `Authorization` headers used by the
+app. This is browser cross-origin configuration, not authentication; API routes
+still enforce account and organizer-session authorization.
 
 To make a student an organizer, import that student first, then grant organizer
 access by student ID. Their existing password remains the same. The organizer
 signs in to the PWA or mobile app with the same credentials. Online app login
-downloads the assigned events and student roster into local SQLite. Organizers
-can delete an event they created while it has no check-ins; once the event has
-any scan, only the system manager can delete it. The app saves each scan locally;
-sync sends only pending records and the server checks event assignment and
+downloads the assigned
+events and student roster into local SQLite. Organizers can delete an event they
+created while it has no check-ins; once the event has any scan, only the system
+manager can delete it. The app saves each scan locally;
+Sync sends only pending records and the server checks event assignment and
 student membership before accepting them. A revoked organizer cannot sign in or
 sync; offline scans remain on that phone and cannot be uploaded while access is
 revoked. Access removal revokes server sessions immediately. Logout revokes the
@@ -185,22 +125,9 @@ Students can refresh records from `/student/attendance`; returned attendance is
 cached on their device for offline viewing. The server stores each scan's
 original date and time for history display.
 
-The management website runs on the same Oracle Cloud Docker service as the API,
-so browser requests use one HTTPS origin. The Oracle Always Free host does not
-idle, and the Vercel static PWA is served from Vercel's global CDN, so neither
-side introduces the former Render free-tier sleep behavior. Student passwords
-remain in local SQLite for offline login, so use test data and trusted pilot
-devices.
-
-## Backup
-
-The database lives in the `norwescan_pg` Docker volume. Back it up from the host:
-
-```sh
-cd server
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres \
-  pg_dump -U norwescan -d norwescan | gzip > backup-$(date +%F).sql.gz
-```
-
-Do not run `docker compose down -v`; the `-v` flag deletes the database volume
-and all roster and attendance data.
+The management website runs on the same Render service as the API, so browser
+requests use one HTTPS origin. Render Free web services sleep after 15 minutes
+of inactivity; the first request afterward can take about a minute. Neon Free
+compute also scales to zero when idle. These free tiers suit a small pilot but
+cannot guarantee a fast first request. Student passwords remain in local SQLite
+for offline login, so use test data and trusted pilot devices.

@@ -74,23 +74,6 @@ Only the stacks actually used in this proof of concept:
 
 ---
 
-## 🚀 Deployment
-
-- **API, manager console, PostgreSQL** — Oracle Cloud Always Free VM, Docker Compose, and Caddy for HTTPS. See `server/README.md`.
-- **PWA** — Vercel static site built from `mobile/`. See `mobile/README.md`.
-
-The production server deploy is one command after the first checkout:
-
-```sh
-cd server
-./deploy.sh
-```
-
-If Git did not preserve the executable bit (for example, after copying files from
-Windows), run `chmod +x deploy.sh` once.
-
----
-
 ## 🗂️ Repository Structure
 
 | Path | Purpose |

@@ -36,9 +36,9 @@ test('requests without browser Origin headers remain usable by native clients', 
 });
 
 test('same-origin manager requests do not need to be added to the cross-origin allowlist', () => {
-  const apiOrigin = 'https://api.example.com';
+  const apiOrigin = 'https://norwescan-api.onrender.com';
 
-  assert.deepEqual(corsDecision(apiOrigin, parseWebOrigins('https://norwescan-pwa.example'), apiOrigin), {
+  assert.deepEqual(corsDecision(apiOrigin, parseWebOrigins('https://offline-first-qr-attendance.onrender.com'), apiOrigin), {
     allowed: true,
     headers: {},
   });

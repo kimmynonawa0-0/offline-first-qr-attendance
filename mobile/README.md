@@ -116,20 +116,19 @@ and standalone builds have separate storage. PWA server sessions for students an
 organizers are saved in IndexedDB; refresh and upload requests use the session
 instead of asking for the password again.
 
-To deploy the PWA on Vercel, import the repository and set the project's
-**Root Directory** to `mobile`. Use the settings in `mobile/vercel.json`:
-install command `npm ci`, build command `npm run build:web:release`, and output
-directory `dist`. Set the Vercel environment variable `EXPO_PUBLIC_API_URL` to
-the API root, such as `https://<your-api-host>`; do not append `/health` or
-`/manager`. Set `WEB_ORIGINS` in `server/.env` to the exact Vercel production
-origin, then rerun `./deploy.sh` on the Oracle host. The release build fails
-early if the API URL is missing, not HTTPS, or contains a route path. If Vercel
-reports a Node version mismatch, set `NODE_VERSION=22` in the project's
-environment variables and redeploy.
-The web export is a single-page app. `mobile/vercel.json` rewrites unknown
-routes to `/index.html`, so reloading or reopening a route such as `/records`
-serves the app shell without changing the address bar. Vercel serves existing
-files and assets before applying the rewrite.
+To pilot the PWA on Render, create a **Static Site** from this repository with
+root directory `mobile`, build command `npm ci && npm run build:web:release`, and
+publish directory `dist`. Set the static site's `EXPO_PUBLIC_API_URL` to the API
+root, such as `https://<your-api-host>`; do not append `/health` or
+`/manager`. Set the API service's `WEB_ORIGINS` to the exact HTTPS origin Render
+assigns to the static site, then redeploy the API. The release build fails early
+if the API URL is missing, not HTTPS, or contains a route path.
+The web export is a single-page app, so add a **Rewrite** rule in the static
+site's **Redirects/Rewrites** settings: source `/*`, destination
+`/index.html`. A rewrite serves the app shell without changing the address bar,
+so reloading or reopening a route such as `/records` no longer returns a 404.
+Use **Rewrite**, not Redirect. Render still serves existing files and assets
+before applying the rule.
 The static PWA URL is distinct from the system-manager console (`/manager`).
 Share the static PWA URL with students and organizers; the API root does not host
 an organizer portal. The manager console relies on role-based API authorization;
