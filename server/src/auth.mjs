@@ -17,17 +17,7 @@ export function loginClientRoleError(client, accessLevel) {
 
 export function canImportRoster(account) {
   if (!account || account.must_change_password) return false;
-  return account.access_level === 'manager'
-    || (account.access_level === 'organizer' && Boolean(account.section));
-}
-
-export function rosterScopeError(account, students) {
-  if (account?.access_level !== 'organizer') return null;
-  if (!account.section) return 'Your organizer account is not linked to a roster section. Contact the system manager.';
-  if (Array.isArray(students) && students.some(student => student?.section?.trim?.() !== account.section)) {
-    return `You can only import students from your section (${account.section}).`;
-  }
-  return null;
+  return account.access_level === 'manager' || account.access_level === 'organizer';
 }
 
 export function canCreateOrganizerEvent(account) {

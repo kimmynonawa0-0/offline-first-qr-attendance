@@ -19,9 +19,9 @@ export default function RosterImport() {
   const lock = useRef(false);
   const summary = preview ? rosterSummary(data, preview.rows) : null;
   const existingIds = new Set([...data.students, ...data.admins].map(account => account.id));
-  const sectionRoster = data.students
-    .filter(student => student.section === user.section)
-    .sort((left, right) => left.id.localeCompare(right.id));
+  const deviceRoster = data.students
+    .slice()
+    .sort((left, right) => `${left.section} ${left.id}`.localeCompare(`${right.section} ${right.id}`));
   async function choose() {
     setError(''); setResult(''); setPreview(null);
     try {
@@ -43,16 +43,17 @@ export default function RosterImport() {
     }
   }
   return <Card>
-    <Title>Current section roster</Title>
-    <Muted>{sectionRoster.length} student{sectionRoster.length === 1 ? '' : 's'} available on this device from {user.section || 'your assigned section'}.</Muted>
-    {sectionRoster.length ? sectionRoster.map(student => <View key={student.id} style={styles.rosterRow}>
-      <Text style={styles.rosterId}>{student.id}</Text><Text numberOfLines={2} style={styles.rosterName}>{student.name}</Text>
-    </View>) : <Muted>No section roster is saved yet. Upload a roster or sign in online to download it.</Muted>}
+    <Title>Roster on this device</Title>
+    <Muted>{deviceRoster.length} student{deviceRoster.length === 1 ? '' : 's'} available across {new Set(deviceRoster.map(student => student.section)).size || 0} section(s). Any active organizer can scan any section.</Muted>
+    {deviceRoster.length ? deviceRoster.slice(0, 50).map(student => <View key={student.id} style={styles.rosterRow}>
+      <Text style={styles.rosterId}>{student.id}</Text><Text numberOfLines={2} style={styles.rosterName}>{student.name} / {student.section}</Text>
+    </View>) : <Muted>No roster is saved yet. Upload a roster or sign in online to download it.</Muted>}
+    {deviceRoster.length > 50 && <Muted>Showing the first 50 of {deviceRoster.length} students. All of them are available to the scanner.</Muted>}
     {!preview && <>
       <Title>Choose a faculty roster</Title>
       <Muted>CSV or Excel (.xlsx, .xls). Required: student_id, name, section. Email is optional.</Muted>
       <Muted>For Excel, put the roster on the first sheet and format student IDs as text.</Muted>
-      <Muted>This organizer can upload students only for {user.section || 'their assigned section'}.</Muted>
+      <Muted>Any active organizer can upload a roster for any section.</Muted>
       <Button disabled={busy} onPress={choose}>Choose roster file</Button>
       <Muted>New students use their section as a temporary password. Existing accounts stay unchanged.</Muted>
     </>}
@@ -75,7 +76,7 @@ export default function RosterImport() {
         <Text style={styles.rosterStatus}>{existingIds.has(row.id) ? 'Existing' : 'New'}</Text>
       </View>)}
       {preview.rows.length > 5 && <Muted>Showing the first 5 of {preview.rows.length} students.</Muted>}
-      <Muted>Upload requires internet. The server checks your organizer access and section before saving this roster.</Muted>
+      <Muted>Upload requires internet. The server checks your organizer access before saving this roster.</Muted>
       {online !== true && <ErrorText>Connect to the internet before uploading. Your selected file is only being previewed on this device.</ErrorText>}
       {(!adminSession || adminSession.id !== user.id || !adminSession.token)
         && <Muted>Your signed-in account will authorize this upload. If its server session needs renewal, the app will renew it automatically.</Muted>}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { passwordHash, passwordMatches, saveBatch, validateBatch } from './sync.mjs';
+import { passwordHash, passwordMatches, saveBatch, validateBatch, dedupeAttendanceRecords } from './sync.mjs';
 import { provisionRoster, validateRoster } from './roster.mjs';
 
 test('organizer password verifier accepts the correct password only', () => {
@@ -34,15 +34,16 @@ test('sync registers a new local event to its organizer in the same transaction'
   const calls = [];
   const client = { async query(sql, args = []) {
     calls.push({ sql, args });
-    if (sql.startsWith('INSERT INTO events')) return { rows: [{ id: args[0] }] };
+    if (sql.startsWith('INSERT INTO events')) return { rows: [{ id: args[0][0] }] };
     return { rows: [] };
   } };
   const result = await saveBatch(client, { students: [], events: [
-    { id: 'local-event', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', createdLocally: true },
+    { id: 'local-event', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', end: '12:00', createdLocally: true },
   ], records: [] }, 'organizer-1');
   assert.deepEqual(result, { acceptedRecordIds: [], conflictRecordIds: [], acceptedEventIds: ['local-event'] });
   assert.ok(calls.findIndex(call => call.sql.startsWith('INSERT INTO events')) < calls.findIndex(call => call.sql.startsWith('INSERT INTO event_organizers')));
-  assert.deepEqual(calls.find(call => call.sql.startsWith('INSERT INTO event_organizers')).args, ['local-event', 'organizer-1']);
+  const assignment = calls.find(call => call.sql.startsWith('INSERT INTO event_organizers'));
+  assert.deepEqual(assignment.args, [['local-event'], ['organizer-1']]);
   assert.equal(calls.at(-1).sql, 'COMMIT');
 });
 
@@ -55,18 +56,44 @@ test('sync shares a new local event with active organizers in the same section',
       { id: 'organizer-2', section: 'BSCS-3C', access_level: 'organizer', enabled: true },
       { id: 'organizer-3', section: 'BSCS-3A', access_level: 'organizer', enabled: true },
     ] };
-    if (sql.startsWith('INSERT INTO events')) return { rows: [{ id: args[0] }] };
+    if (sql.startsWith('INSERT INTO events')) return { rows: [{ id: args[0][0] }] };
     return { rows: [] };
   } };
   await saveBatch(client, { students: [], events: [
-    { id: 'local-event', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', createdLocally: true },
+    { id: 'local-event', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', end: '12:00', createdLocally: true },
   ], records: [] }, { id: 'organizer-1', section: 'BSCS-3C', access_level: 'organizer', must_change_password: false });
-  const assignments = calls.filter(call => call.sql.startsWith('INSERT INTO event_organizers')).map(call => call.args[1]);
-  assert.deepEqual(assignments, ['organizer-1', 'organizer-2']);
+  const assignment = calls.find(call => call.sql.startsWith('INSERT INTO event_organizers'));
+  assert.deepEqual(assignment.args[1], ['organizer-1', 'organizer-2']);
 });
 
-test('roster validation rejects duplicate IDs and malformed rows', () => {
-  assert.deepEqual(validateRoster([{ id: '001', name: 'A', section: 'S' }]), [{ id: '001', name: 'A', section: 'S', email: '' }]);
+test('duplicate organizer scans merge into one Time In and one Time Out per student', () => {
+  const merged = dedupeAttendanceRecords([
+    { id: 'a', eventId: 'e', studentId: 's', recordedAt: '2026-10-26T08:05:00.000Z', timeInAt: '2026-10-26T08:05:00.000Z', timeInMethod: 'scan' },
+    { id: 'b', eventId: 'e', studentId: 's', recordedAt: '2026-10-26T08:01:00.000Z', timeInAt: '2026-10-26T08:01:00.000Z', timeInMethod: 'organizer', timeOutAt: '2026-10-26T17:00:00.000Z', timeOutMethod: 'scan' },
+  ]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].timeInAt, '2026-10-26T08:01:00.000Z');
+  assert.equal(merged[0].timeOutAt, '2026-10-26T17:00:00.000Z');
+  assert.equal(merged[0].timeInMethod, 'organizer');
+});
+
+test('duplicate organizer scans converge in one sync transaction', async () => {
+  const calls = [];
+  const client = { async query(sql, args = []) {
+    calls.push({ sql, args });
+    return { rows: [] };
+  } };
+  const result = await saveBatch(client, { students: [], events: [], records: [
+    { id: 'first', studentId: 's', studentName: 'Student', eventId: 'e', recordedAt: '2026-10-26T08:05:00.000Z', timeInAt: '2026-10-26T08:05:00.000Z', timeInMethod: 'scan' },
+    { id: 'second', studentId: 's', studentName: 'Student', eventId: 'e', recordedAt: '2026-10-26T08:01:00.000Z', timeInAt: '2026-10-26T08:01:00.000Z', timeInMethod: 'organizer', timeOutAt: '2026-10-26T17:00:00.000Z', timeOutMethod: 'scan' },
+  ] }, 'organizer-1');
+  const insert = calls.find(call => call.sql.startsWith('INSERT INTO attendance'));
+  assert.equal(insert.args[0].length, 1);
+  assert.deepEqual(result.acceptedRecordIds.sort(), ['first', 'second']);
+  assert.deepEqual(result.conflictRecordIds, []);
+});
+
+test('roster validation rejects duplicate IDs and malformed rows', () => {  assert.deepEqual(validateRoster([{ id: '001', name: 'A', section: 'S' }]), [{ id: '001', name: 'A', section: 'S', email: '' }]);
   assert.throws(() => validateRoster([{ id: '1', name: 'A', section: 'S' }, { id: '1', name: 'B', section: 'S' }]), /Duplicate student ID/);
   assert.throws(() => validateRoster([{ id: '1', name: '', section: 'S' }]), /Invalid student profile/);
 });
@@ -74,13 +101,21 @@ test('roster validation rejects duplicate IDs and malformed rows', () => {
 test('roster provisions salted section passwords and never resets existing accounts', async () => {
   const students = new Map();
   const client = { async query(sql, args = []) {
-    if (sql.startsWith('SELECT password_hash')) return { rows: students.has(args[0]) ? [{ password_hash: students.get(args[0]).password_hash }] : [] };
     if (sql.startsWith('INSERT INTO students')) {
-      students.set(args[0], { id: args[0], name: args[1], section: args[2], email: args[3], password_salt: args[4], password_hash: args[5], must_change_password: true });
-    }
-    if (sql.startsWith('UPDATE students')) {
-      const student = students.get(args[0]);
-      if (student && !student.password_hash) Object.assign(student, { password_salt: args[1], password_hash: args[2], must_change_password: true });
+      const [ids, names, sections, emails, salts, hashes] = args;
+      const rows = ids.map((id, index) => {
+        if (!students.has(id)) {
+          students.set(id, { id, name: names[index], section: sections[index], email: emails[index],
+            password_salt: salts[index], password_hash: hashes[index], must_change_password: true });
+          return { inserted: true };
+        }
+        const student = students.get(id);
+        if (!student.password_hash) {
+          Object.assign(student, { password_salt: salts[index], password_hash: hashes[index], must_change_password: true });
+        }
+        return { inserted: false };
+      });
+      return { rows };
     }
     return { rows: [] };
   } };

@@ -1,5 +1,6 @@
-function requestError(message, status = null, retryable = false) {
-  const error = new Error(message);
+import { eventEnd } from './event-schedule.mjs';
+
+function requestError(message, status = null, retryable = false) {  const error = new Error(message);
   error.status = status;
   error.retryable = retryable;
   return error;
@@ -160,24 +161,59 @@ export async function downloadOrganizerAttendance(user, token, apiUrl, fetchImpl
   return result.records.map(mapAttendanceRecord);
 }
 
+function attendancePair(record) {
+  return `${record.eventId || ''}\u0000${record.studentId || ''}`;
+}
+
+function mergePendingRecords(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const key = attendancePair(record);
+    groups.set(key, [...(groups.get(key) || []), record]);
+  }
+  const merged = [];
+  const ids = [];
+  for (const group of groups.values()) {
+    const ordered = [...group].sort((left, right) =>
+      String(left.timeInAt || left.recordedAt || '').localeCompare(String(right.timeInAt || right.recordedAt || '')));
+    const base = ordered[0];
+    const timeOut = group.map(record => record.timeOutAt).filter(Boolean).sort()[0] || null;
+    const timeOutRecord = group.find(record => record.timeOutAt && record.timeOutAt === timeOut);
+    merged.push({
+      ...base,
+      timeInAt: base.timeInAt || base.recordedAt,
+      recordedAt: base.timeInAt || base.recordedAt,
+      timeOutAt: timeOut,
+      timeOut: timeOutRecord?.timeOut || base.timeOut || '',
+      timeOutMethod: timeOutRecord?.timeOutMethod || base.timeOutMethod || null,
+    });
+    ids.push(...group.map(record => record.id).filter(Boolean));
+  }
+  return { records: merged, ids };
+}
+
 export async function syncToServer(data, user, token, apiUrl, fetchImpl = fetch) {
   if (user?.role !== 'admin') throw new Error('Log in as an organizer to sync.');
   if (!apiUrl) throw new Error('Set EXPO_PUBLIC_API_URL to the server address first.');
   if (!token) throw new Error('Sign in online as an organizer to sync.');
   const pending = data.records.filter(record => !record.synced);
-  const pendingEventIds = new Set(pending.map(record => record.eventId));
-  const pendingStudentIds = new Set(pending.map(record => record.studentId));
+  const pendingBatch = mergePendingRecords(pending);
+  const pendingEventIds = new Set(pendingBatch.records.map(record => record.eventId));
+  const pendingStudentIds = new Set(pendingBatch.records.map(record => record.studentId));
   const pendingEvents = data.events.filter(event => pendingEventIds.has(event.id));
   const result = await postJson(apiUrl, '/sync', {
       students: data.students.filter(student => pendingStudentIds.has(student.id)).map(({ id, name, section, email }) => ({ id, name, section, email })),
-      events: pendingEvents.map(({ attendees, ...event }) => event),
-      records: pending,
+      events: pendingEvents.map(({ attendees, ...event }) => ({ ...event, end: eventEnd(event) })),
+      records: pendingBatch.records,
     }, fetchImpl, token);
   if (!Array.isArray(result.acceptedRecordIds) || !Array.isArray(result.conflictRecordIds)
     || !Array.isArray(result.acceptedEventIds)) {
     throw new Error('Server did not confirm which records it saved.');
   }
-  return result;
+  return {
+    ...result,
+    acceptedRecordIds: [...new Set([...result.acceptedRecordIds, ...pendingBatch.ids])],
+  };
 }
 
 export async function syncOrganizerWithReauth(data, user, token, apiUrl, fetchImpl = fetch) {

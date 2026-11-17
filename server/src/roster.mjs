@@ -34,25 +34,22 @@ export async function provisionRoster(client, students) {
       return { salt, hash: await passwordHashAsync(student.section, salt) };
     })));
   }
-  let added = 0;
-  let skipped = 0;
   await client.query('BEGIN');
   try {
-    for (const [index, student] of rows.entries()) {
-      const existing = await client.query('SELECT password_hash FROM students WHERE id = $1', [student.id]);
-      const { salt, hash } = credentials[index];
-      if (!existing.rows[0]) {
-        await client.query(`INSERT INTO students (id, name, section, email, password_salt, password_hash, must_change_password)
-          VALUES ($1, $2, $3, $4, $5, $6, TRUE)`, [student.id, student.name, student.section, student.email, salt, hash]);
-        added++;
-      } else {
-        await client.query(`UPDATE students SET password_salt = $2, password_hash = $3, must_change_password = TRUE
-          WHERE id = $1 AND password_hash IS NULL`, [student.id, salt, hash]);
-        skipped++;
-      }
-    }
+    const result = await client.query(`INSERT INTO students
+        (id, name, section, email, password_salt, password_hash, must_change_password)
+      SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::boolean[])
+      ON CONFLICT (id) DO UPDATE SET
+        password_salt = COALESCE(students.password_salt, EXCLUDED.password_salt),
+        password_hash = COALESCE(students.password_hash, EXCLUDED.password_hash),
+        must_change_password = CASE WHEN students.password_hash IS NULL THEN TRUE ELSE students.must_change_password END
+      RETURNING (xmax = 0) AS inserted`,
+    [rows.map(student => student.id), rows.map(student => student.name), rows.map(student => student.section),
+      rows.map(student => student.email), credentials.map(item => item.salt), credentials.map(item => item.hash),
+      rows.map(() => true)]);
     await client.query('COMMIT');
-    return { added, skipped };
+    const added = result.rows.filter(row => row.inserted).length;
+    return { added, skipped: rows.length - added };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
