@@ -19,7 +19,7 @@ or mobile app, not a separate organizer website.
 ## Faculty roster
 
 The system-manager website accepts **CSV UTF-8 (.csv)** and **Excel (.xlsx, .xls)**.
-The organizer PWA accepts the same formats from its Upload section roster screen.
+The organizer PWA accepts the same formats from its Upload roster screen.
 Excel rosters must use the first worksheet and text-formatted Student IDs.
 
 ```csv
@@ -32,7 +32,7 @@ Email is optional. `Student ID` and `Full Name` header spellings also work.
 The manager website previews files before import. The organizer PWA previews
 the selected file locally, then sends it to the server only after online
 organizer authorization. Server-side validation limits files to 1 MB and
-5,000 students. An organizer can upload only students in their assigned section.
+5,000 students. Any active organizer can upload a roster for any section.
 Invalid rows, duplicate IDs, and missing required fields reject the whole import.
 Existing credentials are preserved.
 
@@ -48,16 +48,18 @@ for organizer access and email password recovery are deferred.
 
 - One student-ID login with automatic role selection, password visibility, and logout confirmation.
 - System manager website for roster import, organizer access, event assignment, and attendance review.
-- Organizer PWA roster import uploads online to the server and is restricted to the organizer's assigned section.
+- Organizer PWA roster import uploads online to the server and can target any section.
 - Mandatory first-login password change for both roles, persisted across app restarts.
 - Student dashboard, locally generated personal QR, enlarged QR, current event, and searchable personal attendance records.
 - Organizer dashboard focused on assigned events, scanning, local records, and later sync.
-- Event camera QR scanning, student confirmation against the imported roster, duplicate prevention, and attendance receipt.
+- Event camera QR scanning, student confirmation against the imported roster, duplicate prevention, automatic Time In/Time Out detection, and attendance receipt.
 - Organizer self-check-in and personal QR without account switching.
-- Online organizer sign-in downloads the assigned events and that organizer's section roster for offline scanning.
-- Offline scans stay on-device until the organizer syncs: SQLite in native apps and IndexedDB in the PWA. The server accepts only assigned events and roster students.
+- Online organizer sign-in downloads the assigned events and the complete student roster for offline scanning.
+- Offline scans stay on-device until the organizer syncs: SQLite in native apps and IndexedDB in the PWA. The server accepts assigned events and any roster student.
 
-Date entry uses `YYYY-MM-DD`; time uses 24-hour `HH:MM`. Student QR codes
+Date entry uses `YYYY-MM-DD`; start and end times use 24-hour `HH:MM`. The event
+window controls scanning automatically: scans inside the window record Time In,
+and scans after the end time record Time Out. Student QR codes
 contain a student ID, like the browser prototype. The scanner accepts IDs from
 the roster downloaded for that organizer; unknown IDs are rejected and cannot
 be manually added from the scanner. Camera access is requested only from the

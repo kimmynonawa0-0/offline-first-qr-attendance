@@ -50,8 +50,10 @@ program and year. New students and password resets use the section as a temporar
 password and require a password change. Deleting a student revokes their organizer
 access but preserves historical attendance. An event created by an organizer is
 automatically assigned to every active organizer in the same section, including
-events created offline and uploaded later. Event organizers use the PWA/mobile
-app to view and import their own section roster, scan assigned events, and review
+events created offline and uploaded later. Every event has a start and end time:
+scans inside the window record Time In, and scans after the end time record Time
+Out. Event organizers use the PWA/mobile
+app to view and import rosters from any section, scan assigned events, and review
 check-ins; they cannot use the system-manager console. Manager APIs enforce this
 role boundary even if an organizer opens `/manager` directly.
 
@@ -117,13 +119,14 @@ transactionally. New students use their section as a temporary password;
 existing credentials are preserved. Students need internet for their first
 server login and password change, then the app caches their account locally.
 
-Attendance sync is transactional and idempotent. A record with the same event
-and student as an existing record is reported as a conflict and stays pending on
-the device. The server uses its own event, student, and assignment data when
-recording attendance, so edits to the phone's roster cannot create accounts.
-Students can refresh records from `/student/attendance`; returned attendance is
-cached on their device for offline viewing. The server stores each scan's
-original date and time for history display.
+Attendance sync is transactional and idempotent. Records with the same event and
+student are merged into one row: the earliest Time In and earliest Time Out win,
+so two organizers who scanned the same student converge after sync instead of
+leaving a stuck pending record. The server uses its own event, student, and
+assignment data when recording attendance, so edits to the phone's roster cannot
+create accounts. Students can refresh records from `/student/attendance`;
+returned attendance is cached on their device for offline viewing. The server
+stores each scan's original date and time for history display.
 
 The management website runs on the same Render service as the API, so browser
 requests use one HTTPS origin. Render Free web services sleep after 15 minutes
