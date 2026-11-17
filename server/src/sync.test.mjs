@@ -101,6 +101,9 @@ test('roster validation rejects duplicate IDs and malformed rows', () => {  asse
 test('roster provisions salted section passwords and never resets existing accounts', async () => {
   const students = new Map();
   const client = { async query(sql, args = []) {
+    if (sql.startsWith('SELECT id, password_hash')) {
+      return { rows: [...students.values()].filter(student => args[0].includes(student.id)).map(student => ({ id: student.id, password_hash: student.password_hash })) };
+    }
     if (sql.startsWith('INSERT INTO students')) {
       const [ids, names, sections, emails, salts, hashes] = args;
       const rows = ids.map((id, index) => {

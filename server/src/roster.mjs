@@ -26,10 +26,13 @@ export function validateRoster(students) {
 
 export async function provisionRoster(client, students) {
   const rows = validateRoster(students);
+  const existing = await client.query('SELECT id, password_hash FROM students WHERE id = ANY($1::text[])', [rows.map(student => student.id)]);
+  const existingHashes = new Map(existing.rows.map(student => [student.id, student.password_hash]));
   const credentials = [];
   for (let start = 0; start < rows.length; start += 16) {
     const batch = rows.slice(start, start + 16);
     credentials.push(...await Promise.all(batch.map(async student => {
+      if (existingHashes.get(student.id)) return { salt: null, hash: null };
       const salt = randomBytes(16).toString('hex');
       return { salt, hash: await passwordHashAsync(student.section, salt) };
     })));
@@ -40,7 +43,7 @@ export async function provisionRoster(client, students) {
         (id, name, section, email, password_salt, password_hash, must_change_password)
       SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::boolean[])
       ON CONFLICT (id) DO UPDATE SET
-        password_salt = COALESCE(students.password_salt, EXCLUDED.password_salt),
+        password_salt = CASE WHEN students.password_hash IS NULL THEN EXCLUDED.password_salt ELSE students.password_salt END,
         password_hash = COALESCE(students.password_hash, EXCLUDED.password_hash),
         must_change_password = CASE WHEN students.password_hash IS NULL THEN TRUE ELSE students.must_change_password END
       RETURNING (xmax = 0) AS inserted`,
