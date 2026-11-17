@@ -1,3 +1,6 @@
+import { defaultEventEnd, eventDate, eventEnd, eventSchedule, eventStart, normalizeEventTime } from './event-schedule.mjs';
+import { formatTwelveHourTime } from './event-time.mjs';
+
 const collection = role => role === 'admin' ? 'admins' : 'students';
 const requireValue = (condition, message) => { if (!condition) throw new Error(message); };
 export const DEMO_ADMIN = { id: '23-02330', name: 'Demo Organizer', section: 'BSCS-3C', email: '', password: 'BSCS-3C', mustChangePassword: true };
@@ -65,38 +68,65 @@ export function cacheRemoteAdminPassword(data, adminId, password, serverAccount 
 
 export function mergeOrganizerBootstrap(data, bootstrap) {
   requireValue(Array.isArray(bootstrap?.students) && Array.isArray(bootstrap?.events), 'The server returned invalid organizer data.');
-  let next = { ...data, events: data.events.map(event => ({ ...event, assignedToOrganizer: Boolean(event.createdLocally) })) };
+  const adminIds = new Set(data.admins.map(account => account.id));
+  const students = new Map(data.students.map(account => [account.id, account]));
   for (const student of bootstrap.students) {
     requireValue(student?.id && student?.name && student?.section, 'The server returned an invalid student roster entry.');
-    if (next.admins.some(account => account.id === student.id)) continue;
-    const current = next.students.find(account => account.id === student.id);
+    if (adminIds.has(student.id)) continue;
+    const current = students.get(student.id);
     const profile = { id: student.id, name: student.name, section: student.section, email: student.email || '' };
-    next = { ...next, students: current
-      ? next.students.map(account => account.id === student.id ? { ...account, ...profile } : account)
-      : [...next.students, { ...profile, password: student.section, mustChangePassword: true }] };
+    students.set(student.id, current
+      ? { ...current, ...profile }
+      : { ...profile, password: student.section, mustChangePassword: true });
   }
+  const events = new Map(data.events.map(event => [event.id, { ...event, assignedToOrganizer: Boolean(event.createdLocally) }]));
   for (const event of bootstrap.events) {
-    requireValue(event?.id && event?.name && event?.date && event?.time, 'The server returned an invalid assigned event.');
-    const current = next.events.find(item => item.id === event.id);
-    next = { ...next, events: current
-      ? next.events.map(item => item.id === event.id ? { ...item, ...event, assignedToOrganizer: true, attendees: item.attendees || [] } : item)
-      : [...next.events, { ...event, assignedToOrganizer: true, attendees: event.attendees || [] }] };
+    const date = eventDate(event);
+    const time = eventStart(event);
+    const end = eventEnd(event);
+    requireValue(event?.id && event?.name && date && time && end, 'The server returned an invalid assigned event.');
+    const normalized = { ...event, date, time, end };
+    const current = events.get(event.id);
+    events.set(event.id, current
+      ? { ...current, ...normalized, assignedToOrganizer: true, attendees: current.attendees || [] }
+      : { ...normalized, assignedToOrganizer: true, attendees: event.attendees || [] });
   }
+  const next = { ...data, students: [...students.values()], events: [...events.values()] };
   return Array.isArray(bootstrap.attendance) ? mergeOrganizerAttendance(next, bootstrap.attendance) : next;
+}
+
+function attendanceKey(record) {
+  return `${record?.eventId || ''}\u0000${record?.studentId || ''}`;
+}
+
+function mergeUnsyncedRecord(local, remote) {
+  return {
+    ...remote,
+    ...local,
+    id: local.id || remote.id,
+    timeInAt: local.timeInAt || remote.timeInAt || null,
+    timeIn: local.timeIn || remote.timeIn || local.time || remote.time || '',
+    timeInMethod: local.timeInMethod || remote.timeInMethod || local.method || remote.method || null,
+    timeOutAt: local.timeOutAt || remote.timeOutAt || null,
+    timeOut: local.timeOut || remote.timeOut || '',
+    timeOutMethod: local.timeOutMethod || remote.timeOutMethod || null,
+    synced: false,
+  };
 }
 
 export function mergeStudentAttendance(data, studentId, remoteRecords) {
   requireValue(data.students.some(student => student.id === studentId), 'This student account is not saved on this device.');
   requireValue(Array.isArray(remoteRecords), 'The server returned an invalid attendance history.');
-  const records = new Map(data.records.map(record => [record.id, record]));
+  const records = new Map();
+  for (const record of data.records) records.set(attendanceKey(record), record);
   for (const record of remoteRecords) {
     requireValue(record?.studentId === studentId && typeof record.id === 'string' && record.id
       && typeof record.eventId === 'string' && record.eventId && typeof record.recordedAt === 'string' && record.recordedAt,
       'The server returned an invalid attendance record.');
-    const local = records.get(record.id);
-    records.set(record.id, local && !local.synced
-      ? { ...record, ...local, timeOutAt: local.timeOutAt || record.timeOutAt || null,
-        timeOut: local.timeOut || record.timeOut || '', timeOutMethod: local.timeOutMethod || record.timeOutMethod || null, synced: false }
+    const key = attendanceKey(record);
+    const local = records.get(key);
+    records.set(key, local && !local.synced
+      ? mergeUnsyncedRecord(local, record)
       : { ...record, synced: true });
   }
   return { ...data, records: [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || '')) };
@@ -104,21 +134,28 @@ export function mergeStudentAttendance(data, studentId, remoteRecords) {
 
 export function mergeOrganizerAttendance(data, remoteRecords) {
   requireValue(Array.isArray(remoteRecords), 'The server returned an invalid attendance history.');
-  const records = new Map(data.records.map(record => [record.id, record]));
+  const records = new Map();
+  for (const record of data.records) records.set(attendanceKey(record), record);
   for (const record of remoteRecords) {
     requireValue(record?.id && record.studentId && record.studentName && record.eventId && record.event
       && record.recordedAt, 'The server returned an invalid attendance record.');
-    const local = records.get(record.id);
-    records.set(record.id, local && !local.synced
-      ? { ...record, ...local, timeOutAt: local.timeOutAt || record.timeOutAt || null,
-        timeOut: local.timeOut || record.timeOut || '', timeOutMethod: local.timeOutMethod || record.timeOutMethod || null, synced: false }
+    const key = attendanceKey(record);
+    const local = records.get(key);
+    records.set(key, local && !local.synced
+      ? mergeUnsyncedRecord(local, record)
       : { ...record, synced: true });
   }
   const mergedRecords = [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || ''));
+  const recordsByEvent = new Map();
+  for (const record of mergedRecords) {
+    if (!record.studentName) continue;
+    const list = recordsByEvent.get(record.eventId) || [];
+    list.push(record);
+    recordsByEvent.set(record.eventId, list);
+  }
   const events = data.events.map(event => {
     const attendees = new Map((event.attendees || []).map(attendee => [attendee.id, attendee]));
-    for (const record of mergedRecords.filter(item => item.eventId === event.id)) {
-      if (!record.studentName) continue;
+    for (const record of recordsByEvent.get(event.id) || []) {
       attendees.set(record.studentId, {
         id: record.studentId, name: record.studentName,
         time: record.timeIn || record.time, method: record.timeInMethod || record.method,
@@ -160,13 +197,16 @@ export function createEvent(data, user, fields, id) {
   const name = fields.name.trim();
   const location = fields.location.trim();
   const date = fields.date.trim();
-  const time = fields.time.trim();
+  const time = normalizeEventTime(fields.time ?? fields.start);
+  const end = normalizeEventTime(fields.end) || defaultEventEnd(time);
   const parsedDate = new Date(`${date}T12:00:00`);
   requireValue(name && location, 'Enter the event name and location.');
-  requireValue(/^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(parsedDate.getTime()) && localDate(parsedDate) === date,
+  requireValue(/^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(parsedDate.getTime()) && eventDate({ date }) === date,
     'Enter a valid date as YYYY-MM-DD.');
-  requireValue(/^([01]\d|2[0-3]):[0-5]\d$/.test(time), 'Enter a valid time as HH:MM (24-hour).');
-  return { ...data, events: [...data.events, { id, name, location, date, time, attendees: [], createdBy: user.id }] };
+  requireValue(time, 'Enter a valid start time as HH:MM (24-hour).');
+  requireValue(end, 'Enter a valid end time as HH:MM (24-hour).');
+  requireValue(end > time, 'End time must be later than the start time.');
+  return { ...data, events: [...data.events, { id, name, location, date, time, end, attendees: [], createdBy: user.id }] };
 }
 
 export function eventAttendanceCount(data, eventId) {
@@ -232,12 +272,14 @@ export function attendanceStatus(data, eventId, studentId) {
   return { record, timeInAt, timeOutAt, status: !timeInAt ? 'not-in' : !timeOutAt ? 'timed-in' : 'completed' };
 }
 
-export function checkIn(data, user, eventId, person, method, recordId, action = 'time-in', now = new Date()) {
+export function checkIn(data, user, eventId, person, method, recordId, now = new Date()) {
   requireAdmin(data, user);
   requireValue(['organizer', 'scan'].includes(method), 'Invalid check-in method.');
-  requireValue(['time-in', 'time-out'].includes(action), 'Choose Time In or Time Out.');
   const event = data.events.find(e => e.id === eventId);
   requireValue(event, 'Event no longer exists.');
+  const schedule = eventSchedule(event, now);
+  requireValue(schedule.action, schedule.message);
+  const action = schedule.action;
   const student = method === 'organizer' ? user : person;
   if (method === 'scan') requireValue(data.students.some(account => account.id === student?.id),
     'This QR code is not in the imported student roster.');
@@ -245,7 +287,11 @@ export function checkIn(data, user, eventId, person, method, recordId, action = 
   const name = student.name.trim();
   requireValue(id && name, 'Enter the student ID and full name.');
   const current = attendanceStatus(data, eventId, id);
-  if (action === 'time-in') requireValue(current.status === 'not-in', 'This student is already timed in for this event.');
+  if (action === 'time-in') {
+    requireValue(current.status === 'not-in', current.status === 'completed'
+      ? 'This student has already completed attendance for this event.'
+      : `This student is already timed in. Time Out opens after ${eventEnd(event) ? formatTwelveHourTime(eventEnd(event)) : 'the event ends'}.`);
+  }
   if (action === 'time-out') {
     requireValue(current.status !== 'not-in', 'This student has no Time In recorded for this event.');
     requireValue(current.status !== 'completed', 'This student is already timed out for this event.');

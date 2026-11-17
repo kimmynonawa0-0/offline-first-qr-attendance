@@ -89,7 +89,7 @@
       </section>
       <section id="page-events" class="page panel hidden">
         <h1>Create and assign an event</h1><p>Assigned organizers download this event and the student roster when they sign in online. They can then scan while offline and sync afterward.</p>
-        <div class="grid"><div><label for="event-name">Event name</label><input id="event-name" maxlength="200" required></div><div><label for="event-location">Location</label><input id="event-location" maxlength="200" required></div><div><label for="event-date">Date</label><input id="event-date" type="date" required></div><div><label for="event-time">Start time</label><input id="event-time" type="time" required></div></div>
+        <div class="grid"><div><label for="event-name">Event name</label><input id="event-name" maxlength="200" required></div><div><label for="event-location">Location</label><input id="event-location" maxlength="200" required></div><div><label for="event-date">Date</label><input id="event-date" type="date" required></div><div><label for="event-time">Start time</label><input id="event-time" type="time" required></div><div><label for="event-end">End time</label><input id="event-end" type="time" required></div></div>
         <label>Assign active organizers</label><div id="event-organizers" class="picklist"></div><div class="toolbar"><button id="create-event">Create event</button></div>
         <div id="event-list"></div>
       </section>
@@ -112,6 +112,9 @@
   <dialog id="event-delete-dialog"><form id="event-delete-form"><h2 id="event-delete-title">Delete event?</h2><p id="event-delete-warning"></p><label for="event-delete-password">System manager password</label><input id="event-delete-password" type="password" autocomplete="current-password" required><div class="toolbar"><button id="event-delete-confirm" class="danger">Delete event</button><button id="event-delete-cancel" class="secondary" type="button">Cancel</button></div></form></dialog>
   <script>
     const $ = selector => document.querySelector(selector);
+    document.querySelectorAll('dialog').forEach(dialog => {
+      dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+    });
     function setPasswordVisibility(button, input, visible, animate = true) {
       input.type = visible ? 'text' : 'password'; button.setAttribute('aria-label', `${visible ? 'Hide' : 'Show'} password`); button.setAttribute('aria-pressed', String(visible));
       const svg = button.querySelector('svg');
@@ -335,7 +338,7 @@
     function eventTable(events, showActions = false) {
       const headings = ['Event','Date / Time','Location','Organizers','Check-ins'];
       if (showActions) headings.push('Action');
-      return table(headings, events.map(event=>`<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}</td><td>${esc(event.location)}</td><td>${(event.organizers||[]).map(org=>esc(org.name)).join(', ')||'—'}</td><td>${event.attendance_count ?? 0}</td>${showActions ? `<td><button class="danger" data-event-delete="${esc(event.id)}">${(event.attendance_count ?? 0) > 0 ? 'Force delete' : 'Delete'}</button></td>` : ''}</tr>`).join(''));
+      return table(headings, events.map(event=>`<tr><td>${esc(event.name)}</td><td>${esc(event.date)} ${esc(event.time)}${event.end?` - ${esc(event.end)}`:''}</td><td>${esc(event.location)}</td><td>${(event.organizers||[]).map(org=>esc(org.name)).join(', ')||'—'}</td><td>${event.attendance_count ?? 0}</td>${showActions ? `<td><button class="danger" data-event-delete="${esc(event.id)}">${(event.attendance_count ?? 0) > 0 ? 'Force delete' : 'Delete'}</button></td>` : ''}</tr>`).join(''));
     }
     $('#login-form').addEventListener('submit', login);
     document.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',async()=>{
@@ -453,11 +456,20 @@
       try{await api(`/management/organizers/${encodeURIComponent(button.dataset.toggle)}`,{method:'PATCH',body:JSON.stringify({enabled:button.dataset.enabled==='true'})});await refresh();message('Organizer access updated.');}
       catch(error){message(error.message,true);}
     });
+    $('#event-time').addEventListener('change',()=>{
+      const start=$('#event-time').value;
+      if(!start) return;
+      const [hours,minutes]=start.split(':').map(Number);
+      const total=Math.min(hours*60+minutes+60,23*60+59);
+      const suggested=`${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+      if(!$('#event-end').value||$('#event-end').value<=start) $('#event-end').value=suggested;
+    });
     $('#create-event').addEventListener('click',async()=>{
-      const event={id:crypto.randomUUID(),name:$('#event-name').value.trim(),location:$('#event-location').value.trim(),date:$('#event-date').value,time:$('#event-time').value};
+      const event={id:crypto.randomUUID(),name:$('#event-name').value.trim(),location:$('#event-location').value.trim(),date:$('#event-date').value,time:$('#event-time').value,end:$('#event-end').value};
       const organizerIds=[...$('#event-organizers').querySelectorAll('input:checked')].map(input=>input.value);
-      if(!event.name||!event.location||!event.date||!event.time||!organizerIds.length){message('Complete event details and select at least one organizer.',true);return;}
-      try{await api('/management/events',{method:'POST',body:JSON.stringify({event,organizerIds})});$('#event-name').value='';$('#event-location').value='';$('#event-organizers').querySelectorAll('input').forEach(input=>input.checked=false);await refresh();message('Event created and assigned. Organizers can download it when they sign in online.');}
+      if(!event.name||!event.location||!event.date||!event.time||!event.end||!organizerIds.length){message('Complete event details and select at least one organizer.',true);return;}
+      if(event.end<=event.time){message('End time must be later than the start time.',true);return;}
+      try{await api('/management/events',{method:'POST',body:JSON.stringify({event,organizerIds})});$('#event-name').value='';$('#event-location').value='';$('#event-time').value='';$('#event-end').value='';$('#event-organizers').querySelectorAll('input').forEach(input=>input.checked=false);await refresh();message('Event created and assigned. Organizers can download it when they sign in online.');}
       catch(error){message(error.message,true);}
     });
     $('#event-list').addEventListener('click', async event => {

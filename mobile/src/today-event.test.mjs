@@ -82,6 +82,19 @@ test('groups events into today, upcoming, and newest-first past', () => {
   assert.deepEqual(events.map(event => event.id), ['past-old', 'today-late', 'upcoming-far', 'today-early', 'past-recent', 'upcoming-near']);
 });
 
+test('keeps a later event created today in the Today section', () => {
+  const now = new Date(2026, 9, 24, 9, 0);
+  const events = [
+    { id: 'morning', date: '2026-10-24', time: '08:00' },
+    { id: 'later', date: '2026-10-24T00:00:00.000Z', time: '15:30:00' },
+  ];
+
+  const grouped = groupEventsByPhase(events, now);
+
+  assert.deepEqual(grouped.today.map(event => event.id), ['morning', 'later']);
+  assert.deepEqual(grouped.upcoming, []);
+});
+
 test('labels event dates relative to today', () => {
   const now = new Date(2026, 9, 24, 12, 0);
 

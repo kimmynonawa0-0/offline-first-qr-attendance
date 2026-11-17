@@ -17,12 +17,12 @@ function inputStyle(disabled) {
   };
 }
 
-function WebField({ label, type: inputType, value, onChange, disabled }) {
+function WebField({ label, ariaLabel, type: inputType, value, onChange, disabled }) {
   return <View style={styles.field}>
     <Text style={styles.label}>{label}</Text>
     <input
       type={inputType}
-      aria-label={label === 'Date' ? 'Event date' : 'Event time'}
+      aria-label={ariaLabel}
       value={value}
       disabled={disabled}
       onChange={event => onChange(event.target.value)}
@@ -31,10 +31,11 @@ function WebField({ label, type: inputType, value, onChange, disabled }) {
   </View>;
 }
 
-export default function EventDateTimeFields({ date, time, onChangeDate, onChangeTime, disabled = false }) {
+export default function EventDateTimeFields({ date, time, end, onChangeDate, onChangeTime, onChangeEnd, disabled = false }) {
   return <View style={styles.wrap}>
-    <WebField label="Date" type="date" value={date} onChange={onChangeDate} disabled={disabled} />
-    <WebField label="Time" type="time" value={time} onChange={onChangeTime} disabled={disabled} />
+    <WebField label="Date" ariaLabel="Event date" type="date" value={date} onChange={onChangeDate} disabled={disabled} />
+    <WebField label="Start time" ariaLabel="Event start time" type="time" value={time} onChange={onChangeTime} disabled={disabled} />
+    <WebField label="End time" ariaLabel="Event end time" type="time" value={end} onChange={onChangeEnd} disabled={disabled} />
   </View>;
 }
 

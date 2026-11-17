@@ -50,7 +50,7 @@ function FieldRow({ icon, label, value, accessibilityLabel, testID, onPress, dis
   </Pressable>;
 }
 
-export default function EventDateTimeFields({ date, time, onChangeDate, onChangeTime, disabled = false }) {
+export default function EventDateTimeFields({ date, time, end, onChangeDate, onChangeTime, onChangeEnd, disabled = false }) {
   const [editing, setEditing] = useState(null);
 
   function pickDate(event, selected) {
@@ -64,6 +64,15 @@ export default function EventDateTimeFields({ date, time, onChangeDate, onChange
       const hours = String(selected.getHours()).padStart(2, '0');
       const minutes = String(selected.getMinutes()).padStart(2, '0');
       onChangeTime(`${hours}:${minutes}`);
+    }
+  }
+
+  function pickEnd(event, selected) {
+    if (Platform.OS !== 'ios') setEditing(null);
+    if (event.type === 'set' && selected) {
+      const hours = String(selected.getHours()).padStart(2, '0');
+      const minutes = String(selected.getMinutes()).padStart(2, '0');
+      onChangeEnd(`${hours}:${minutes}`);
     }
   }
 
@@ -81,12 +90,21 @@ export default function EventDateTimeFields({ date, time, onChangeDate, onChange
     />
     <FieldRow
       icon="time-outline"
-      label="Time"
+      label="Start time"
       value={displayTime(time)}
-      accessibilityLabel="Event time"
+      accessibilityLabel="Event start time"
       testID="event-time-field"
       disabled={disabled}
       onPress={() => setEditing('time')}
+    />
+    <FieldRow
+      icon="time-outline"
+      label="End time"
+      value={displayTime(end)}
+      accessibilityLabel="Event end time"
+      testID="event-end-time-field"
+      disabled={disabled}
+      onPress={() => setEditing('end')}
     />
     {editing === 'date' && <DateTimePicker
       value={dateValue(date)}
@@ -103,6 +121,14 @@ export default function EventDateTimeFields({ date, time, onChangeDate, onChange
       themeVariant="dark"
       accentColor={colors.yellow}
       onChange={pickTime}
+    />}
+    {editing === 'end' && <DateTimePicker
+      value={timeValue(end)}
+      mode="time"
+      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+      themeVariant="dark"
+      accentColor={colors.yellow}
+      onChange={pickEnd}
     />}
     {done && <Pressable accessibilityRole="button" accessibilityLabel="Done choosing" onPress={() => setEditing(null)} style={styles.done}>
       <Text style={styles.doneText}>Done</Text>

@@ -3,7 +3,8 @@ import { KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { eventDayLabel, eventForToday, eventsForToday, groupEventsByPhase, isEventPast } from './today-event.mjs';
-import { currentTimeValue, formatTwelveHourTime } from './event-time.mjs';
+import { formatTwelveHourTime } from './event-time.mjs';
+import { defaultEventEnd, eventSchedule, formatEventWindow } from './event-schedule.mjs';
 import EventDateTimeFields from './EventDateTimeFields';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,15 @@ const studentScreens = ['student-home', 'records', 'profile'];
 const go = (page, params = {}) => router.push({ pathname: '/[page]', params: { page, ...params } });
 const replace = (page, params = {}) => router.replace({ pathname: '/[page]', params: { page, ...params } });
 
+function localTimeValue(date = new Date()) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function newEventDraft(now = new Date()) {
+  const time = localTimeValue(now);
+  return { name: '', location: '', date: localDate(now), time, end: defaultEventEnd(time) };
+}
+
 const pageTitles = {
   'change-password': 'Security',
   'student-home': 'Student home',
@@ -36,7 +46,7 @@ const pageTitles = {
   'event-records': 'Event attendance',
   history: 'Events',
   'admin-records': 'Attendance records',
-  'roster-import': 'Upload section roster',
+  'roster-import': 'Upload roster',
   scanner: 'Scan Attendance',
   receipt: 'Attendance recorded',
 };
@@ -83,7 +93,7 @@ function Metrics({ items }) {
 }
 
 function EventSummary({ event }) {
-  return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {formatTwelveHourTime(event.time)}</Muted>
+  return <><Title>{event.name}</Title><Muted>{event.location}</Muted><Muted>{event.date} at {formatEventWindow(event)}</Muted>
     {event.createdLocally && <Muted>LOCAL ONLY / Students have not been notified. This event uploads with attendance.</Muted>}
   </>;
 }
@@ -112,7 +122,7 @@ function EventListRow({ event, detail, onPress }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${event.name}`} onPress={onPress} style={({ pressed }) => [styles.eventRow, pressed && styles.buttonMuted]}>
     <View style={styles.eventIcon}><Ionicons name="calendar-outline" size={23} color={colors.yellow} /></View>
     <View style={styles.eventText}>
-      <Text style={styles.eventLabel}>{when} / {formatTwelveHourTime(event.time)}</Text>
+      <Text style={styles.eventLabel}>{when} / {formatEventWindow(event)}</Text>
       <Text numberOfLines={2} style={styles.eventName}>{event.name}</Text>
       {detail ? <Text style={styles.eventLabel}>{detail}</Text> : null}
     </View>
@@ -160,9 +170,9 @@ function eventDateBadge(event) {
 function eventCardStatus(event) {
   if (isEventPast(event)) return { label: 'ENDED', style: styles.eventStatusEnded };
   if (event.createdLocally) return { label: 'LOCAL ONLY', style: styles.eventStatusLocal };
-  if (event.date === localDate() && event.time <= currentTimeValue()) {
-    return { label: 'LIVE', style: styles.eventStatusLive };
-  }
+  const schedule = eventSchedule(event);
+  if (schedule.phase === 'time-in') return { label: 'LIVE', style: styles.eventStatusLive };
+  if (schedule.phase === 'time-out') return { label: 'TIME OUT', style: styles.eventStatusLive };
   return { label: 'UPCOMING', style: styles.eventStatusUpcoming };
 }
 
@@ -170,7 +180,7 @@ function EventCard({ event, onOpen, onScan, onViewRecords }) {
   const badge = eventDateBadge(event);
   const status = eventCardStatus(event);
   const past = isEventPast(event);
-  const live = status.label === 'LIVE';
+  const scannable = Boolean(eventSchedule(event).action);
   const checkedIn = event.attendees.length;
   return <Card>
     <Pressable accessibilityRole="button" accessibilityLabel={`Open ${event.name}`} onPress={onOpen} style={({ pressed }) => [styles.eventCardTop, pressed && styles.buttonMuted]}>
@@ -183,7 +193,7 @@ function EventCard({ event, onOpen, onScan, onViewRecords }) {
           <Text numberOfLines={2} style={styles.eventCardName}>{event.name}</Text>
           <Text style={[styles.eventStatus, status.style]}>{status.label}</Text>
         </View>
-        <Text style={styles.eventCardMeta}>{eventDayLabel(event)} / {formatTwelveHourTime(event.time)}</Text>
+        <Text style={styles.eventCardMeta}>{eventDayLabel(event)} / {formatEventWindow(event)}</Text>
         <Text numberOfLines={1} style={styles.eventCardMeta}>{event.location}</Text>
         <Text style={styles.eventCardAttendance}>{checkedIn} student{checkedIn === 1 ? '' : 's'} checked in</Text>
       </View>
@@ -191,7 +201,7 @@ function EventCard({ event, onOpen, onScan, onViewRecords }) {
     </Pressable>
     {past
       ? <Button secondary onPress={onViewRecords}>View attendance</Button>
-      : live
+      : scannable
         ? <Button onPress={onScan}>Scan attendance</Button>
         : <Button secondary onPress={onOpen}>Manage event</Button>}
   </Card>;
@@ -411,7 +421,7 @@ function EventAttendanceList({ rows }) {
 }
 
 export default function AppScreen() {
-  const { page: screen = 'login', eventId, recordId, scanMode = 'time-in' } = useLocalSearchParams();
+  const { page: screen = 'login', eventId, recordId } = useLocalSearchParams();
   const focused = useIsFocused();
   const { data, user, setUser, webCredential, adminSession, setAdminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice, startupRoute, consumeStartupRoute } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
@@ -424,7 +434,7 @@ export default function AppScreen() {
   const [query, setQuery] = useState('');
   const [syncOpen, setSyncOpen] = useState(false);
   const [createEventOpen, setCreateEventOpen] = useState(false);
-  const [eventDraft, setEventDraft] = useState(() => ({ name: '', location: '', date: localDate(), time: currentTimeValue() }));
+  const [eventDraft, setEventDraft] = useState(() => newEventDraft());
   const lock = useRef(false);
   const { width } = useWindowDimensions();
   useEffect(() => {
@@ -573,6 +583,11 @@ export default function AppScreen() {
     }
     setScanPickerOpen(true);
   }
+  function openCreateEvent() {
+    setError('');
+    setEventDraft(newEventDraft());
+    setCreateEventOpen(true);
+  }
 
   let content;
   if (authScreen) content = <LoginScreen
@@ -615,7 +630,7 @@ export default function AppScreen() {
     <RecentActivity records={data.records.slice(0, 4)} onSeeAll={() => go('admin-records')} />
     <Card><Title>Organizer tools</Title>
       <Button secondary onPress={() => go('history')}>View assigned events</Button>
-      {Platform.OS === 'web' && <Button secondary onPress={() => go('roster-import')}>Upload section roster</Button>}
+      {Platform.OS === 'web' && <Button secondary onPress={() => go('roster-import')}>Upload roster</Button>}
     </Card>
     <Card><Title>Sync attendance</Title><Muted>{pending} attendance record{pending === 1 ? '' : 's'} waiting.</Muted>
       <Button disabled={busy || !online} onPress={() => setSyncOpen(true)}>Upload now</Button></Card>
@@ -624,9 +639,9 @@ export default function AppScreen() {
   else if (screen === 'admin-records') content = <AdminRecords data={data}
     onOpenEvent={id => go('event-records', { eventId: id })} />;
   else if (screen === 'history') content = <>
-    <Button icon="add-outline" onPress={() => { setError(''); setCreateEventOpen(true); }}>Create event</Button>
+    <Button icon="add-outline" onPress={openCreateEvent}>Create event</Button>
     <History events={assignedEvents} onManage={id => go('event', { eventId: id })}
-      onScan={id => go('scanner', { eventId: id, scanMode: 'time-in' })}
+      onScan={id => go('scanner', { eventId: id })}
       onViewRecords={id => go('event-records', { eventId: id })} />
   </>;
   else if (screen === 'event-records' && event) {
@@ -638,37 +653,51 @@ export default function AppScreen() {
       <EventAttendanceList rows={eventAttendanceRows(data, event.id)} />
       <Button secondary onPress={() => go('event', { eventId: event.id })}>{eventPast ? 'Open event' : 'Open event tools'}</Button>
     </>;
-  } else if (screen === 'event' && event) content = <>
-    <Card admin><EventSummary event={event} />
+  } else if (screen === 'event' && event) {
+    const schedule = eventSchedule(event);
+    const ownStatus = attendanceStatus(data, eventId, user.id);
+    const ownAction = schedule.action;
+    const ownButtonLabel = ownStatus.status === 'completed' ? 'Attendance complete'
+      : ownAction === 'time-in' ? 'Check myself in (Time In)'
+        : ownAction === 'time-out' ? 'Check myself out (Time Out)'
+          : ownStatus.status === 'timed-in' ? 'Time Out opens after the event ends'
+            : schedule.phase === 'upcoming' ? `Check-in opens at ${formatTwelveHourTime(schedule.start)}`
+              : 'Attendance unavailable';
+    content = <>
+      <Card admin><EventSummary event={event} />
+        {eventPast
+          ? <Muted>This event has ended. Attendance is read-only.</Muted>
+          : <>
+            <Muted>{schedule.message}</Muted>
+            <Button disabled={!ownAction} onPress={() => go('scanner', { eventId })}>Scan attendance</Button>
+          </>}
+        {canDeleteEvent && (eventScanCount > 0
+          ? <Muted>This event has {eventScanCount} check-in{eventScanCount === 1 ? '' : 's'}. Only the system manager can delete it.</Muted>
+          : <Button danger onPress={() => requestDeleteEvent(event)}>Delete event</Button>)}
+      </Card>
       {eventPast
-        ? <Muted>This event has ended. Attendance is read-only.</Muted>
+        ? <EventAttendanceList rows={eventAttendanceRows(data, event.id)} />
         : <>
-          <Button purple onPress={() => go('scanner', { eventId, scanMode: 'time-in' })}>Scan Time In</Button>
-          <Button secondary onPress={() => go('scanner', { eventId, scanMode: 'time-out' })}>Scan Time Out</Button>
+          <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
+            <Muted>Time In: {ownAttendance?.time || displayTime(ownAttendance?.timeInAt)}</Muted>
+            <Muted>Time Out: {ownAttendance?.timeOut || displayTime(ownAttendance?.timeOutAt)}</Muted>
+            <Button disabled={busy || !ownAction || ownStatus.status === 'completed'} onPress={() => run(() => update(d => {
+              const recordId = ownStatus.record?.id || Crypto.randomUUID();
+              return checkIn(d, user, eventId, user, 'organizer', recordId);
+            }), () => setNotice(ownAction === 'time-in' ? 'Time In recorded.' : 'Time Out recorded.'))}>{ownButtonLabel}</Button>
+            <Button secondary onPress={() => setQrOpen(true)}>My QR</Button><Muted>Self check-in is recorded as organizer attendance.</Muted>
+          </Card>
+          <Card><Title>Attendees ({event.attendees.length})</Title><Attendees event={event} /></Card>
         </>}
-      {canDeleteEvent && (eventScanCount > 0
-        ? <Muted>This event has {eventScanCount} check-in{eventScanCount === 1 ? '' : 's'}. Only the system manager can delete it.</Muted>
-        : <Button danger onPress={() => requestDeleteEvent(event)}>Delete event</Button>)}
-    </Card>
-    {eventPast
-      ? <EventAttendanceList rows={eventAttendanceRows(data, event.id)} />
-      : <>
-        <Card><Title>My attendance</Title><Muted>{user.name} ({user.id})</Muted>
-          <Muted>Time In: {ownAttendance?.time || displayTime(ownAttendance?.timeInAt)}</Muted>
-          <Muted>Time Out: {ownAttendance?.timeOut || displayTime(ownAttendance?.timeOutAt)}</Muted>
-          <Button disabled={busy || attendanceStatus(data, eventId, user.id).status === 'completed'} onPress={() => run(() => update(d => checkIn(d, user, eventId, user, 'organizer', Crypto.randomUUID(), attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'time-in' : 'time-out')), () => setNotice(attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Time In recorded.' : 'Time Out recorded.'))}>{attendanceStatus(data, eventId, user.id).status === 'not-in' ? 'Check myself in (Time In)' : attendanceStatus(data, eventId, user.id).status === 'timed-in' ? 'Check myself out (Time Out)' : 'Attendance complete'}</Button>
-          <Button secondary onPress={() => setQrOpen(true)}>My QR</Button><Muted>Self check-in is recorded as organizer attendance.</Muted>
-        </Card>
-        <Card><Title>Attendees ({event.attendees.length})</Title><Attendees event={event} /></Card>
-      </>}
-  </>;
-  else if (screen === 'scanner' && event) content = <Scanner data={data} eventId={eventId} initialMode={scanMode} busy={busy} onSave={(person, method, action) => {
+    </>;
+  }
+  else if (screen === 'scanner' && event) content = <Scanner data={data} eventId={eventId} busy={busy} onSave={(person, method, action) => {
     const id = action === 'time-in'
       ? Crypto.randomUUID()
       : attendanceStatus(data, eventId, person.id).record?.id;
-    run(() => update(d => checkIn(d, user, eventId, person, method, id, action)), () => {
+    run(() => update(d => checkIn(d, user, eventId, person, method, id)), () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      replace('receipt', { eventId, recordId: id, scanMode: action });
+      replace('receipt', { eventId, recordId: id });
     });
   }} />;
   else if (screen === 'receipt' && receipt) content = <>
@@ -684,7 +713,7 @@ export default function AppScreen() {
       <Muted>Time Out: {receipt.timeOut || displayTime(receipt.timeOutAt)}</Muted>
       <Muted>{receipt.timeOutAt ? `${methodLabel(receipt.timeOutMethod)} / ` : ''}${methodLabel(receipt.timeInMethod || receipt.method)} / Saved locally</Muted>
     </Card>
-    <Button icon="scan-outline" onPress={() => replace('scanner', { eventId: receipt.eventId, scanMode })}>Scan next</Button>
+    <Button icon="scan-outline" onPress={() => replace('scanner', { eventId: receipt.eventId })}>Scan next</Button>
     <Button secondary onPress={() => replace('event', { eventId: receipt.eventId })}>Done</Button>
   </>;
   else content = <Card><Title>Page or event not found</Title><Button onPress={() => replace(home)}>Back to dashboard</Button></Card>;
@@ -722,15 +751,17 @@ export default function AppScreen() {
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)} dismissOnBackdrop showClose={false}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
     {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)} dismissOnBackdrop showClose={false}><EventSummary event={currentEvent} /></ModalFrame>}
     {createEventOpen && <ModalFrame title="Create event" onClose={() => setCreateEventOpen(false)} busy={busy} showClose={false}>
-      <Muted>Create an event for your section. Every active organizer in your section can scan it. If you are offline, it stays on this device and students will not see a notification. Share the event in your group chat; it will upload with scanned attendance when you have internet.</Muted>
+      <Muted>Set the event window. Scans during the window record Time In; scans after it record Time Out. Every active organizer can scan the event and import rosters from any section. If you are offline, it stays on this device and students will not see a notification. Share the event in your group chat; it will upload with scanned attendance when you have internet.</Muted>
       <Field label="Event name" value={eventDraft.name} onChangeText={name => setEventDraft(current => ({ ...current, name }))} placeholder="e.g. Department assembly" />
       <Field label="Location" value={eventDraft.location} onChangeText={location => setEventDraft(current => ({ ...current, location }))} placeholder="e.g. Main hall" />
       <EventDateTimeFields
         date={eventDraft.date}
         time={eventDraft.time}
+        end={eventDraft.end}
         disabled={busy}
         onChangeDate={date => setEventDraft(current => ({ ...current, date }))}
-        onChangeTime={time => setEventDraft(current => ({ ...current, time }))}
+        onChangeTime={time => setEventDraft(current => ({ ...current, time, end: current.end > time ? current.end : defaultEventEnd(time) }))}
+        onChangeEnd={end => setEventDraft(current => ({ ...current, end }))}
       />
       <ErrorText>{error}</ErrorText>
       <Button disabled={busy} onPress={() => run(async () => {
@@ -752,7 +783,7 @@ export default function AppScreen() {
         return { createdLocally };
       }, result => {
         setCreateEventOpen(false);
-        setEventDraft({ name: '', location: '', date: localDate(), time: currentTimeValue() });
+        setEventDraft(newEventDraft());
         setNotice(result.createdLocally
           ? 'Event saved on this device only. Students will not be notified; share it in your group chat. It will upload with attendance.'
           : 'Event created and published.');
@@ -775,10 +806,16 @@ export default function AppScreen() {
       <Button disabled={busy} onPress={() => run(async () => {
         const result = await withServerSession(token => syncOrganizerWithReauth(data, user, token, process.env.EXPO_PUBLIC_API_URL));
         await update(current => markSynced(current, result.acceptedRecordIds, result.acceptedEventIds));
+        try {
+          const bootstrap = await withServerSession(token => downloadOrganizerBootstrap(token, process.env.EXPO_PUBLIC_API_URL));
+          await update(current => mergeOrganizerBootstrap(current, bootstrap));
+        } catch {
+          // The upload already succeeded; a refresh can be retried with pull-to-refresh.
+        }
         return result;
       }, result => {
         setSyncOpen(false);
-        setNotice(`Upload complete. ${result.acceptedEventIds.length} created event(s) and ${result.acceptedRecordIds.length} attendance record(s) synced.${result.conflictRecordIds.length ? ` ${result.conflictRecordIds.length} duplicate(s) stayed on this device.` : ''}`);
+        setNotice(`Upload complete. ${result.acceptedEventIds.length} created event(s) and ${result.acceptedRecordIds.length} attendance record(s) synced. Shared records were refreshed.`);
       })}>{busy ? 'Uploading...' : 'Upload'}</Button>
       <Button secondary disabled={busy} onPress={() => setSyncOpen(false)}>Cancel</Button>
     </ModalFrame>}

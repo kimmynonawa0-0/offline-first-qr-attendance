@@ -273,7 +273,7 @@ export function ScanCorners() {
   </View>;
 }
 
-export function ModalFrame({ title, onClose, children, busy = false, dismissOnBackdrop = false, showClose = true }) {
+export function ModalFrame({ title, onClose, children, busy = false, dismissOnBackdrop = true, showClose = true }) {
   const [dragY] = useState(() => new RNAnimated.Value(0));
   const closeState = useRef({ busy, onClose });
   useEffect(() => { closeState.current = { busy, onClose }; }, [busy, onClose]);
@@ -319,9 +319,9 @@ export function ModalFrame({ title, onClose, children, busy = false, dismissOnBa
             style={styles.modalGripHitArea}
           >
             <View style={styles.modalGrip} />
+            <Title>{title}</Title>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
-            <Title>{title}</Title>
             {children}
             {showClose && <LinkButton disabled={busy} onPress={onClose}>Close</LinkButton>}
           </ScrollView>
@@ -403,8 +403,8 @@ export const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.86)', justifyContent: 'flex-end', padding: 12 },
   modalKeyboard: { width: '100%', maxWidth: 500, maxHeight: '92%', alignSelf: 'center', justifyContent: 'flex-end' },
   modalCard: { maxHeight: '100%', backgroundColor: colors.panelRaised, borderWidth: 1, borderColor: colors.line, borderRadius: radius.xl, overflow: 'hidden' },
-  modalGripHitArea: { minHeight: 36, alignItems: 'center', justifyContent: 'center' },
-  modalGrip: { width: 48, height: 4, borderRadius: 2, backgroundColor: colors.grip, alignSelf: 'center', marginTop: 10 },
+  modalGripHitArea: { paddingTop: 10, paddingBottom: 4, paddingHorizontal: 20, gap: 8 },
+  modalGrip: { width: 48, height: 4, borderRadius: 2, backgroundColor: colors.grip, alignSelf: 'center' },
   modalContent: { padding: 20, gap: 10 },
   qr: { alignItems: 'center', padding: 20, backgroundColor: colors.paper, borderRadius: 15, gap: 12 },
   qrText: { color: colors.qrInk, fontWeight: '700' },

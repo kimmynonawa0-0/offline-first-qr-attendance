@@ -6,7 +6,8 @@ import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, valid
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
 import { validateManagedStudent } from './management-students.mjs';
-import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerSectionAssigneeIds, rosterScopeError } from './auth.mjs';
+import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerSectionAssigneeIds } from './auth.mjs';
+import { normalizeEvent } from './event-schedule.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
 import { createManagerRecoveryCode, hashManagerRecoveryCode, managerRecoveryCodeMatches } from './manager-recovery.mjs';
 
@@ -38,7 +39,8 @@ CREATE TABLE IF NOT EXISTS student_sessions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE TABLE IF NOT EXISTS events (
-  id TEXT PRIMARY KEY, name TEXT NOT NULL, location TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, location TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL,
+  end_time TEXT NOT NULL DEFAULT '23:59'
 );
 CREATE TABLE IF NOT EXISTS event_organizers (
   event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -71,6 +73,17 @@ await pool.query(`ALTER TABLE organizers ADD COLUMN IF NOT EXISTS access_level T
   ALTER TABLE students ADD COLUMN IF NOT EXISTS password_hash TEXT;
   ALTER TABLE students ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT TRUE;`);
 await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS end_time TEXT;
+  UPDATE events SET end_time = CASE
+    WHEN time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+      THEN to_char(LEAST(time::time + interval '1 hour', '23:59'::time), 'HH24:MI')
+    ELSE '23:59' END
+  WHERE end_time IS NULL;
+  ALTER TABLE events ALTER COLUMN end_time SET NOT NULL;
+  CREATE INDEX IF NOT EXISTS events_date_start_idx ON events (date, time);
+  CREATE INDEX IF NOT EXISTS event_organizers_organizer_idx ON event_organizers (organizer_id);
+  CREATE INDEX IF NOT EXISTS students_section_idx ON students (section);
+  CREATE INDEX IF NOT EXISTS attendance_recorded_at_idx ON attendance (recorded_at DESC);
   UPDATE events e SET created_by = (
     SELECT a.actor_id FROM management_audit a
     WHERE a.action = 'event_created' AND a.entity_id = e.id
@@ -147,11 +160,14 @@ async function writeAudit(client, actorId, action, entityId, details = {}) {
     [randomUUID(), actorId, action, entityId, JSON.stringify(details)]);
 }
 function validEvent(event) {
-  if (!event || !['id', 'name', 'location', 'date', 'time'].every(key =>
-    typeof event[key] === 'string' && event[key].trim() && event[key].length <= 200)) return false;
-  const parsedDate = new Date(`${event.date}T12:00:00`);
-  return /^\d{4}-\d{2}-\d{2}$/.test(event.date) && !Number.isNaN(parsedDate.getTime())
-    && parsedDate.toISOString().slice(0, 10) === event.date && /^([01]\d|2[0-3]):[0-5]\d$/.test(event.time);
+  const normalized = normalizeEvent(event);
+  if (!event || !['id', 'name', 'location', 'date'].every(key =>
+    typeof normalized[key] === 'string' && normalized[key].trim() && normalized[key].length <= 200)) return false;
+  const parsedDate = new Date(`${normalized.date}T12:00:00`);
+  const localDate = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized.date) && !Number.isNaN(parsedDate.getTime())
+    && localDate === normalized.date
+    && Boolean(normalized.time) && Boolean(normalized.end) && normalized.end > normalized.time;
 }
 
 const server = http.createServer(async (request, response) => {
@@ -374,9 +390,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && request.url === '/roster/upload') {
       const account = await organizerForRequest(request);
       if (!account) return send(401, { error: 'Your session expired or was revoked. Log in again.' });
-      if (!canImportRoster(account)) return send(403, { error: account.must_change_password ? 'Change your temporary password before importing a roster.' : 'Your organizer profile needs a roster section before importing.' });
-      const scopeError = rosterScopeError(account, body.students);
-      if (scopeError) return send(403, { error: scopeError });
+      if (!canImportRoster(account)) return send(403, { error: account.must_change_password ? 'Change your temporary password before importing a roster.' : 'Your organizer profile cannot import rosters.' });
       const client = await pool.connect();
       try {
         const counts = await provisionRoster(client, body.students);
@@ -389,28 +403,26 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && request.url === '/roster/preview') {
       const account = await organizerForRequest(request);
       if (!account) return send(401, { error: 'Your session expired or was revoked. Log in again.' });
-      if (!canImportRoster(account)) return send(403, { error: account.must_change_password ? 'Change your temporary password before importing a roster.' : 'Your organizer profile needs a roster section before importing.' });
+      if (!canImportRoster(account)) return send(403, { error: account.must_change_password ? 'Change your temporary password before importing a roster.' : 'Your organizer profile cannot import rosters.' });
       const students = parseRosterFile(body.fileName, body.fileBase64);
-      const scopeError = rosterScopeError(account, students);
-      if (scopeError) return send(403, { error: scopeError });
       return send(200, { students });
     }
     if (request.method === 'POST' && request.url === '/organizer/events') {
       const organizer = await organizerForRequest(request);
       if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
       if (!canCreateOrganizerEvent(organizer)) return send(403, { error: organizer.access_level === 'manager' ? 'System managers create and assign events at /manager.' : 'Change your temporary password before creating events.' });
-      if (!validEvent(body.event)) return send(400, { error: 'Provide a valid event name, location, date, and time.' });
+      if (!validEvent(body.event)) return send(400, { error: 'Provide a valid event name, location, date, start time, and end time.' });
       const sectionOrganizers = organizer.section
         ? await pool.query(`SELECT id, section, access_level, enabled FROM organizers
           WHERE enabled = TRUE AND access_level = 'organizer' AND section = $1`, [organizer.section])
         : { rows: [] };
       const organizerIds = organizerSectionAssigneeIds(organizer, sectionOrganizers.rows);
-      const event = body.event;
+      const event = normalizeEvent(body.event);
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        await client.query('INSERT INTO events (id, name, location, date, time, created_by) VALUES ($1, $2, $3, $4, $5, $6)',
-          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim(), organizer.id]);
+        await client.query('INSERT INTO events (id, name, location, date, time, end_time, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim(), event.end.trim(), organizer.id]);
         for (const id of organizerIds) await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2)', [event.id.trim(), id]);
         await writeAudit(client, organizer.id, 'event_created', event.id.trim(), { organizerIds });
         await client.query('COMMIT');
@@ -464,16 +476,14 @@ const server = http.createServer(async (request, response) => {
       if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
       if (organizer.access_level !== 'organizer') return send(403, { error: 'System manager accounts use the management website, not the scanning app.' });
       if (organizer.must_change_password) return send(403, { error: 'Change your temporary password before downloading the student roster.' });
-      const result = await pool.query(`SELECT e.id, e.name, e.location, e.date, e.time,
+      const result = await pool.query(`SELECT e.id, e.name, e.location, e.date, e.time, e.end_time AS "end",
         e.created_by AS "createdBy",
         (SELECT COALESCE(json_agg(json_build_object('id', assigned.id, 'name', assigned.name)), '[]')
           FROM event_organizers links JOIN organizers assigned ON assigned.id = links.organizer_id
           WHERE links.event_id = e.id AND assigned.enabled = TRUE) AS organizers
         FROM events e JOIN event_organizers own ON own.event_id = e.id
         WHERE own.organizer_id = $1 ORDER BY e.date, e.time, e.name`, [organizer.id]);
-      const students = organizer.access_level === 'manager'
-        ? await pool.query('SELECT id, name, section FROM students ORDER BY id')
-        : await pool.query('SELECT id, name, section FROM students WHERE section = $1 ORDER BY id', [organizer.section]);
+      const students = await pool.query('SELECT id, name, section FROM students ORDER BY id');
       const attendance = await pool.query(`SELECT a.id, a.student_id, a.student_name, a.event_id, a.event_name,
         a.location, a.recorded_at, a.attendance_date, a.attendance_time, a.method,
         a.time_in_at, a.time_in_method, a.time_out_at, a.time_out_method
@@ -502,7 +512,7 @@ const server = http.createServer(async (request, response) => {
         pool.query(`SELECT o.id, o.name, o.enabled, o.access_level,
           (SELECT COUNT(*)::int FROM event_organizers eo WHERE eo.organizer_id = o.id) AS assigned_events
           FROM organizers o ORDER BY o.name, o.id`),
-        pool.query(`SELECT e.id, e.name, e.location, e.date, e.time,
+        pool.query(`SELECT e.id, e.name, e.location, e.date, e.time, e.end_time AS "end",
           COALESCE(json_agg(json_build_object('id', o.id, 'name', o.name)) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizers,
           (SELECT COUNT(*)::int FROM attendance a WHERE a.event_id = e.id) AS attendance_count
           FROM events e LEFT JOIN event_organizers eo ON eo.event_id = e.id
@@ -735,9 +745,9 @@ const server = http.createServer(async (request, response) => {
           await client.query('ROLLBACK');
           return send(400, { error: 'Every assigned organizer must have an active account.' });
         }
-        const event = body.event;
-        await client.query('INSERT INTO events (id, name, location, date, time, created_by) VALUES ($1, $2, $3, $4, $5, $6)',
-          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim(), manager.id]);
+        const event = normalizeEvent(body.event);
+        await client.query('INSERT INTO events (id, name, location, date, time, end_time, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [event.id.trim(), event.name.trim(), event.location.trim(), event.date.trim(), event.time.trim(), event.end.trim(), manager.id]);
         for (const id of ids) await client.query('INSERT INTO event_organizers (event_id, organizer_id) VALUES ($1, $2)', [event.id.trim(), id]);
         await writeAudit(client, manager.id, 'event_created', event.id.trim(), { organizerIds: ids });
         await client.query('COMMIT');
@@ -804,12 +814,12 @@ const server = http.createServer(async (request, response) => {
     const eventIds = [...new Set([...body.events.map(event => event.id), ...body.records.map(record => record.eventId)])];
     const studentIds = [...new Set(body.records.map(record => record.studentId))];
     const events = eventIds.length ? await pool.query(isManager(organizer)
-      ? 'SELECT id, name, location, date, time FROM events WHERE id = ANY($1::text[])'
-      : `SELECT e.id, e.name, e.location, e.date, e.time FROM events e
+      ? 'SELECT id, name, location, date, time, end_time AS "end" FROM events WHERE id = ANY($1::text[])'
+      : `SELECT e.id, e.name, e.location, e.date, e.time, e.end_time AS "end" FROM events e
         JOIN event_organizers eo ON eo.event_id = e.id WHERE eo.organizer_id = $1 AND e.id = ANY($2::text[])`,
     isManager(organizer) ? [eventIds] : [organizer.id, eventIds]) : { rows: [] };
     const availableEventIds = new Set(events.rows.map(event => event.id));
-    const locallyCreated = body.events.filter(event => event.createdLocally === true);
+    const locallyCreated = body.events.filter(event => event.createdLocally === true).map(normalizeEvent);
     const unseenLocalIds = locallyCreated.map(event => event.id).filter(id => !availableEventIds.has(id));
     if (unseenLocalIds.length) {
       const collisions = await pool.query('SELECT id FROM events WHERE id = ANY($1::text[])', [unseenLocalIds]);
@@ -825,11 +835,8 @@ const server = http.createServer(async (request, response) => {
     if (students.rows.length !== studentIds.length) {
       return send(403, { error: 'A scanned student is missing from the server roster. Records remain saved on the device.' });
     }
-    if (!isManager(organizer) && students.rows.some(student => student.section !== organizer.section)) {
-      return send(403, { error: 'A scanned student is outside this organizer section roster. Records remain saved on the device.' });
-    }
     const eventById = new Map(events.rows.map(event => [event.id, event]));
-    for (const event of locallyCreated) if (!eventById.has(event.id)) eventById.set(event.id, event);
+    for (const event of locallyCreated) if (!eventById.has(event.id)) eventById.set(event.id, normalizeEvent(event));
     const studentById = new Map(students.rows.map(student => [student.id, student]));
     body.events = [
       ...events.rows.map(event => locallyCreated.some(local => local.id === event.id)
