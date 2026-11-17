@@ -7,7 +7,7 @@ import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
 import { validateManagedStudent } from './management-students.mjs';
 import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerSectionAssigneeIds } from './auth.mjs';
-import { normalizeEvent } from './event-schedule.mjs';
+import { normalizeEvent, normalizeEventTime } from './event-schedule.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
 import { createManagerRecoveryCode, hashManagerRecoveryCode, managerRecoveryCodeMatches } from './manager-recovery.mjs';
 
@@ -165,8 +165,10 @@ function validEvent(event) {
     typeof normalized[key] === 'string' && normalized[key].trim() && normalized[key].length <= 200)) return false;
   const parsedDate = new Date(`${normalized.date}T12:00:00`);
   const localDate = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`;
+  const explicitEnd = event.end ?? event.endTime;
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized.date) && !Number.isNaN(parsedDate.getTime())
     && localDate === normalized.date
+    && (explicitEnd === undefined || explicitEnd === null || explicitEnd === '' || Boolean(normalizeEventTime(explicitEnd)))
     && Boolean(normalized.time) && Boolean(normalized.end) && normalized.end > normalized.time;
 }
 
