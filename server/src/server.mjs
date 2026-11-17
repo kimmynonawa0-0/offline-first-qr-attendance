@@ -75,7 +75,7 @@ await pool.query(`ALTER TABLE organizers ADD COLUMN IF NOT EXISTS access_level T
 await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT;
   ALTER TABLE events ADD COLUMN IF NOT EXISTS end_time TEXT;
   UPDATE events SET end_time = CASE
-    WHEN time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    WHEN time ~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
       THEN to_char(LEAST(time::time + interval '1 hour', '23:59'::time), 'HH24:MI')
     ELSE '23:59' END
   WHERE end_time IS NULL;
