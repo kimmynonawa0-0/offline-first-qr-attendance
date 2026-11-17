@@ -834,7 +834,12 @@ const server = http.createServer(async (request, response) => {
     const students = studentIds.length
       ? await pool.query('SELECT id, name, section, email FROM students WHERE id = ANY($1::text[])', [studentIds])
       : { rows: [] };
-    if (students.rows.length !== studentIds.length) {
+    const foundStudentIds = new Set(students.rows.map(student => student.id));
+    const missingStudentIds = studentIds.filter(id => !foundStudentIds.has(id));
+    if (missingStudentIds.length === 1 && missingStudentIds[0] === organizer.id) {
+      // Organizer self check-in is valid even when the account is not in the student roster table.
+      students.rows.push({ id: organizer.id, name: organizer.name, section: organizer.section, email: '' });
+    } else if (missingStudentIds.length) {
       return send(403, { error: 'A scanned student is missing from the server roster. Records remain saved on the device.' });
     }
     const eventById = new Map(events.rows.map(event => [event.id, event]));
