@@ -720,13 +720,42 @@ const server = http.createServer(async (request, response) => {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const result = await client.query(`UPDATE organizers SET enabled = $2 WHERE id = $1
-          RETURNING id, name, enabled, access_level`, [organizerId, body.enabled]);
-        if (!result.rows[0]) { await client.query('ROLLBACK'); return send(404, { error: 'Organizer account was not found.' }); }
-        if (!body.enabled) await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [organizerId]);
+        const found = await client.query(`SELECT id, name, section, enabled, access_level
+          FROM organizers WHERE id = $1 FOR UPDATE`, [organizerId]);
+        if (!found.rows[0] || found.rows[0].access_level !== 'organizer') {
+          await client.query('ROLLBACK');
+          return send(404, { error: 'Organizer account was not found.' });
+        }
+        if (body.enabled) {
+          // A revoked organizer may have changed their password while using the
+          // student account, so restore from the student credentials.
+          await client.query(`UPDATE organizers o SET enabled = TRUE,
+              name = COALESCE(s.name, o.name), section = COALESCE(s.section, o.section),
+              salt = COALESCE(s.password_salt, o.salt),
+              password_hash = COALESCE(s.password_hash, o.password_hash),
+              credential_initialized = CASE WHEN s.password_hash IS NOT NULL THEN TRUE ELSE o.credential_initialized END,
+              must_change_password = COALESCE(s.must_change_password, o.must_change_password)
+            FROM students s WHERE o.id = s.id AND o.id = $1`, [organizerId]);
+          await client.query('UPDATE organizers SET enabled = TRUE WHERE id = $1', [organizerId]);
+        } else {
+          // Revocation must leave a working student account with the same
+          // credentials. Attendance rows are keyed by student ID, so history is
+          // inherited automatically.
+          await client.query(`INSERT INTO students
+              (id, name, section, email, password_salt, password_hash, must_change_password)
+            SELECT o.id, o.name, o.section, '', o.salt, o.password_hash, o.must_change_password
+            FROM organizers o WHERE o.id = $1
+            ON CONFLICT (id) DO UPDATE SET
+              name = EXCLUDED.name, section = EXCLUDED.section,
+              password_salt = EXCLUDED.password_salt, password_hash = EXCLUDED.password_hash,
+              must_change_password = EXCLUDED.must_change_password`, [organizerId]);
+          await client.query('UPDATE organizers SET enabled = FALSE WHERE id = $1', [organizerId]);
+        }
+        await client.query('DELETE FROM organizer_sessions WHERE organizer_id = $1', [organizerId]);
+        await client.query('DELETE FROM student_sessions WHERE student_id = $1', [organizerId]);
         await writeAudit(client, manager.id, body.enabled ? 'organizer_restored' : 'organizer_revoked', organizerId, {});
         await client.query('COMMIT');
-        return send(200, { organizer: result.rows[0] });
+        return send(200, { organizer: { ...found.rows[0], enabled: body.enabled } });
       } catch (error) { await client.query('ROLLBACK'); throw error; }
       finally { client.release(); }
     }
