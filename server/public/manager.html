@@ -114,6 +114,7 @@
     const $ = selector => document.querySelector(selector);
     document.querySelectorAll('dialog').forEach(dialog => {
       dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+      dialog.addEventListener('close', () => dialog.querySelectorAll('input').forEach(input => { input.value = ''; }));
     });
     function setPasswordVisibility(button, input, visible, animate = true) {
       input.type = visible ? 'text' : 'password'; button.setAttribute('aria-label', `${visible ? 'Hide' : 'Show'} password`); button.setAttribute('aria-pressed', String(visible));
