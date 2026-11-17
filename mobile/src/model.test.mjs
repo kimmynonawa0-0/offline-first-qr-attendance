@@ -68,6 +68,39 @@ test('organizer bootstrap includes server attendance so Time Out can be scanned 
   assert.equal(data.records[0].synced, true);
 });
 
+test('organizer bootstrap loads students from every section for cross-section scanning', () => {
+  const data = mergeOrganizerBootstrap({ ...ready(), events: [], records: [] }, {
+    students: [
+      { id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C' },
+      { id: '90001', name: 'Other Section Student', section: 'BSIT-2A' },
+    ],
+    events: [],
+  });
+  assert.equal(data.students.some(student => student.id === '90001' && student.section === 'BSIT-2A'), true);
+});
+
+test('duplicate scans from two organizers merge into one event/student record after sync', () => {
+  const data = {
+    ...ready(),
+    events: [{ id: 'e1', name: 'Assembly', attendees: [], assignedToOrganizer: true }],
+    records: [{
+      id: 'local-device', studentId: '00123', studentName: 'Juan Dela Cruz', eventId: 'e1', event: 'Assembly',
+      recordedAt: '2026-10-17T01:05:00.000Z', timeInAt: '2026-10-17T01:05:00.000Z', timeIn: '09:05 AM',
+      timeInMethod: 'scan', timeOutAt: null, timeOut: '', timeOutMethod: null, synced: false,
+    }],
+  };
+  const next = mergeOrganizerAttendance(data, [{
+    id: 'server-record', studentId: '00123', studentName: 'Juan Dela Cruz', eventId: 'e1', event: 'Assembly',
+    recordedAt: '2026-10-17T01:00:00.000Z', timeInAt: '2026-10-17T01:00:00.000Z', timeIn: '09:00 AM',
+    timeInMethod: 'organizer', timeOutAt: '2026-10-17T09:00:00.000Z', timeOut: '05:00 PM', timeOutMethod: 'scan',
+  }]);
+  assert.equal(next.records.length, 1);
+  assert.equal(next.records[0].id, 'local-device');
+  assert.equal(next.records[0].timeOutAt, '2026-10-17T09:00:00.000Z');
+  assert.equal(next.records[0].synced, false);
+  assert.equal(next.events[0].attendees.length, 1);
+});
+
 test('student attendance refresh merges only that student\'s records and preserves local history', () => {
   const data = cacheRemoteStudent(ready(), { id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C', role: 'student' }, 'BSCS-3C');
   data.records = [{ id: 'local', studentId: '00123', eventId: 'e0', recordedAt: '2026-09-25T10:00:00.000Z', synced: false }];
