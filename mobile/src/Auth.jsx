@@ -26,7 +26,6 @@ export function LoginScreen({ onLogin }) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
     try {
-      const localAdmin = data.admins.some(account => account.id === identifier.trim());
       const apiUrl = process.env.EXPO_PUBLIC_API_URL;
       if (!native && !apiUrl) {
         throw new Error('The PWA is not connected to the attendance server. Configure its API URL and try again.');
@@ -66,13 +65,13 @@ export function LoginScreen({ onLogin }) {
             if (bootstrapError) setNotice(`Signed in. Assigned events could not be downloaded: ${bootstrapError.message}`);
             await finishLogin(sessionFor(next.admins.find(account => account.id === remote.id), 'admin')); return;
           }
-          if (localAdmin) throw new Error('This ID is not registered as an organizer on the server.');
           if (native) {
             try { await saveOfflineCredential(SecureStore, 'student', remote.id, password); }
             catch { setNotice('Signed in, but this device could not protect an offline password. Offline sign-in is not enabled.'); }
           }
           const next = await update(current => cacheRemoteStudent(current, remote));
           await setAdminSession({ id: remote.id, role: 'student', token: remote.sessionToken });
+          setAdminAuthIssue('');
           await finishLogin(sessionFor(next.students.find(account => account.id === remote.id), 'student')); return;
         } catch (remoteError) {
           if (native && isRetryableAuthFailure(remoteError)) {

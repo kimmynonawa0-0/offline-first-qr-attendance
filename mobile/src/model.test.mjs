@@ -26,12 +26,22 @@ test('one login detects the stored role by ID, never email or caller-selected ro
   assert.throws(() => login(data, '00123', 'wrong'), /Invalid/);
 });
 
-test('remote student login caches a sanitized student account without changing organizer role', () => {
-  const data = cacheRemoteStudent(ready(), { id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C',
-    role: 'student', mustChangePassword: true }, 'BSCS-3C');
-  assert.equal(login(data, '00123', 'BSCS-3C').role, 'student');
-  assert.equal(data.students[0].mustChangePassword, true);
-  assert.throws(() => cacheRemoteStudent(data, { id: '23-02330', name: 'Wrong', section: 'S', role: 'student' }, 'S'), /organizer/);
+test('remote student login demotes a revoked organizer and preserves attendance', () => {
+  let data = importRoster(ready(), admin, rows);
+  data.admins.push({ id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C', email: '', password: 'old admin password', mustChangePassword: false });
+  data.students = data.students.filter(student => student.id !== '00123');
+  data.records = [{ id: 'history', studentId: '00123', eventId: 'e1', studentName: 'Juan Dela Cruz', recordedAt: '2026-10-17T01:00:00.000Z', synced: true }];
+
+  data = cacheRemoteStudent(data, { id: '00123', name: 'Juan Dela Cruz', section: 'BSCS-3C', email: '', role: 'student', mustChangePassword: false }, 'student password');
+
+  assert.equal(data.admins.some(account => account.id === '00123'), false);
+  assert.equal(login(data, '00123', 'student password').role, 'student');
+  assert.equal(data.records[0].id, 'history');
+
+  data = cacheRemoteAdminPassword(data, '00123', 'student password', { name: 'Juan Dela Cruz', section: 'BSCS-3C', mustChangePassword: false });
+  assert.equal(data.students.some(account => account.id === '00123'), false);
+  assert.equal(login(data, '00123', 'student password').role, 'admin');
+  assert.equal(data.records[0].id, 'history');
 });
 
 test('organizer bootstrap refreshes assigned data without replacing local passwords or attendance', () => {

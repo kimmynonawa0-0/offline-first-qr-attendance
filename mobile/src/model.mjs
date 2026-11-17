@@ -28,23 +28,20 @@ export function login(data, identifier, password) {
 export function cacheRemoteStudent(data, account, password) {
   requireValue(account?.role === 'student' && account.id && account.name && account.section,
     'The server returned an invalid student account.');
-  requireValue(!data.admins.some(admin => admin.id === account.id),
-    'This student ID is already registered as an organizer on this device.');
+  const existingStudent = data.students.find(student => student.id === account.id);
   const student = {
     id: account.id, name: account.name, section: account.section, email: account.email || '',
     ...(typeof password === 'string' ? { password } : {}),
     mustChangePassword: Boolean(account.mustChangePassword),
   };
-  const exists = data.students.some(item => item.id === student.id);
-  const updatedStudents = data.students.map(item => {
-    if (item.id !== student.id) return item;
-    const updated = { ...item, ...student };
-    if (typeof password !== 'string') delete updated.password;
-    return updated;
-  });
-  return { ...data, students: exists
-    ? updatedStudents
-    : [...data.students, student] };
+  const updatedStudents = existingStudent
+    ? data.students.map(item => item.id === student.id ? { ...item, ...student } : item)
+    : [...data.students, student];
+  return {
+    ...data,
+    admins: data.admins.filter(admin => admin.id !== account.id),
+    students: updatedStudents,
+  };
 }
 
 export function cacheRemoteAdminPassword(data, adminId, password, serverAccount = {}) {
