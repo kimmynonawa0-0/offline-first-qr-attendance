@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated as RNAnimated, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Animated as RNAnimated, Image, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -275,47 +275,55 @@ export function ScanCorners() {
 
 export function ModalFrame({ title, onClose, children, busy = false, dismissOnBackdrop = true, showClose = true }) {
   const [dragY] = useState(() => new RNAnimated.Value(0));
-  const closeState = useRef({ busy, onClose });
-  useEffect(() => { closeState.current = { busy, onClose }; }, [busy, onClose]);
-  const close = () => { if (!closeState.current.busy) closeState.current.onClose(); };
-  const dismiss = () => { if (!busy) onClose(); };
+  const useNativeDriver = Platform.OS !== 'web';
+
+  const slideClosed = useCallback(() => {
+    if (busy) return;
+    RNAnimated.timing(dragY, {
+      toValue: 600, duration: 170, useNativeDriver,
+    }).start(() => onClose());
+  }, [busy, dragY, onClose, useNativeDriver]);
+
+  const settleDrag = useCallback(() => {
+    RNAnimated.spring(dragY, { toValue: 0, damping: 20, stiffness: 220, useNativeDriver }).start();
+  }, [dragY, useNativeDriver]);
+
   useEffect(() => {
     dragY.setValue(28);
-    RNAnimated.timing(dragY, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-  }, [dragY]);
-  function settleDrag() {
-    RNAnimated.spring(dragY, { toValue: 0, damping: 20, stiffness: 220, useNativeDriver: true }).start();
-  }
-  function onDragMove(_, gesture) { dragY.setValue(Math.max(0, gesture.dy)); }
-  function onDragRelease(_, gesture) {
-    if (closeState.current.busy) { settleDrag(); return; }
-    if (gesture.dy > 96 || gesture.vy > 0.9) {
-      RNAnimated.timing(dragY, { toValue: 600, duration: 160, useNativeDriver: true }).start(close);
-    } else {
-      settleDrag();
-    }
-  }
-  function onDragTerminate() { settleDrag(); }
-  return <Modal visible transparent animationType="fade" onRequestClose={() => !busy && onClose()}>
+    RNAnimated.timing(dragY, { toValue: 0, duration: 200, useNativeDriver }).start();
+  }, [dragY, useNativeDriver]);
+
+  // Rebuilt each render so the handlers always use the current busy/onClose values.
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => !busy,
+    onMoveShouldSetPanResponder: (_, gesture) => !busy
+      && gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderGrant: () => { dragY.stopAnimation(); },
+    onPanResponderMove: (_, gesture) => { dragY.setValue(Math.max(0, gesture.dy)); },
+    onPanResponderRelease: (_, gesture) => {
+      if (busy) { settleDrag(); return; }
+      if (gesture.dy > 96 || gesture.vy > 0.9) slideClosed();
+      else settleDrag();
+    },
+    onPanResponderTerminate: settleDrag,
+    onPanResponderTerminationRequest: () => true,
+  });
+
+  return <Modal visible transparent animationType="fade" onRequestClose={slideClosed}>
     <SafeAreaView testID="app-modal" accessibilityViewIsModal style={styles.overlay}>
       {dismissOnBackdrop && <Pressable
         accessibilityRole="button"
         accessibilityLabel="Close dialog"
-        onPress={dismiss}
+        onPress={slideClosed}
         style={StyleSheet.absoluteFill}
       />}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
         <RNAnimated.View style={[styles.modalCard, { transform: [{ translateY: dragY }] }]}>
           <View
+            {...panResponder.panHandlers}
             accessibilityRole="button"
             accessibilityLabel={busy ? undefined : 'Swipe down to close'}
             accessibilityState={{ disabled: busy }}
-            onStartShouldSetResponder={() => !busy}
-            onMoveShouldSetResponder={(_, gesture) => !busy
-              && gesture.dy > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx)}
-            onResponderMove={onDragMove}
-            onResponderRelease={onDragRelease}
-            onResponderTerminate={onDragTerminate}
             style={styles.modalGripHitArea}
           >
             <View style={styles.modalGrip} />
@@ -323,7 +331,7 @@ export function ModalFrame({ title, onClose, children, busy = false, dismissOnBa
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
             {children}
-            {showClose && <LinkButton disabled={busy} onPress={onClose}>Close</LinkButton>}
+            {showClose && <LinkButton disabled={busy} onPress={slideClosed}>Close</LinkButton>}
           </ScrollView>
         </RNAnimated.View>
       </KeyboardAvoidingView>
