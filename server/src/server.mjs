@@ -137,22 +137,39 @@ await pool.query(`UPDATE organizers SET access_level = 'organizer', enabled = FA
 await pool.query(`UPDATE organizers o SET section = s.section, name = s.name
   FROM students s WHERE o.id = s.id AND o.access_level = 'organizer'
   AND (o.section = '' OR o.name = 'Organizer')`);
-// One-time repair for organizer accounts revoked before revoke copied credentials
-// into a student account. The marker keeps later student password changes intact.
-const revokedStudentBackfill = await pool.query("SELECT 1 FROM schema_migrations WHERE id = 'revoked-organizer-student-backfill'");
-if (!revokedStudentBackfill.rowCount) {
+async function backfillRevokedOrganizerStudents() {
+  // Copy disabled organizer accounts into students so revoked access still has
+  // a working student login. Only complete name/section profiles are copied;
+  // a blank profile must never corrupt or create a student roster row.
   await pool.query(`UPDATE students s SET name = o.name, section = o.section,
       password_salt = o.salt, password_hash = o.password_hash,
       must_change_password = o.must_change_password
     FROM organizers o
-    WHERE o.id = s.id AND o.access_level = 'organizer' AND o.enabled = FALSE;
+    WHERE o.id = s.id AND o.access_level = 'organizer' AND o.enabled = FALSE
+      AND btrim(o.name) <> '' AND btrim(o.section) <> '';
     INSERT INTO students (id, name, section, email, password_salt, password_hash, must_change_password)
     SELECT o.id, o.name, o.section, '', o.salt, o.password_hash, o.must_change_password
     FROM organizers o
     WHERE o.access_level = 'organizer' AND o.enabled = FALSE
+      AND btrim(o.name) <> '' AND btrim(o.section) <> ''
       AND NOT EXISTS (SELECT 1 FROM students s WHERE s.id = o.id)
-    ON CONFLICT (id) DO NOTHING;
-    INSERT INTO schema_migrations (id) VALUES ('revoked-organizer-student-backfill') ON CONFLICT DO NOTHING;`);
+    ON CONFLICT (id) DO NOTHING;`);
+}
+// One-time repair for organizer accounts revoked before revoke copied credentials
+// into a student account. The marker keeps later student password changes intact.
+const revokedStudentBackfill = await pool.query("SELECT 1 FROM schema_migrations WHERE id = 'revoked-organizer-student-backfill'");
+if (!revokedStudentBackfill.rowCount) {
+  await backfillRevokedOrganizerStudents();
+  await pool.query("INSERT INTO schema_migrations (id) VALUES ('revoked-organizer-student-backfill') ON CONFLICT DO NOTHING");
+}
+// Deployments that ran the backfill before the profile guard may already hold
+// corrupted student rows, so re-apply complete profiles exactly once. Rows
+// whose organizer profile is still blank are excluded from the organizer
+// roster download and stay editable through the manager console.
+const revokedStudentRepair = await pool.query("SELECT 1 FROM schema_migrations WHERE id = 'revoked-organizer-profile-repair'");
+if (!revokedStudentRepair.rowCount) {
+  await backfillRevokedOrganizerStudents();
+  await pool.query("INSERT INTO schema_migrations (id) VALUES ('revoked-organizer-profile-repair') ON CONFLICT DO NOTHING");
 }
 await pool.query('ALTER TABLE organizers ADD COLUMN IF NOT EXISTS credential_initialized BOOLEAN NOT NULL DEFAULT FALSE');
 await pool.query(`ALTER TABLE organizer_sessions ALTER COLUMN expires_at DROP NOT NULL;
