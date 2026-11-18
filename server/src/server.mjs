@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS management_audit (
   entity_id TEXT NOT NULL, details JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE TABLE IF NOT EXISTS attendance (
   id TEXT PRIMARY KEY, student_id TEXT NOT NULL, student_name TEXT NOT NULL,
   event_id TEXT NOT NULL, event_name TEXT NOT NULL, location TEXT NOT NULL,
@@ -134,18 +137,23 @@ await pool.query(`UPDATE organizers SET access_level = 'organizer', enabled = FA
 await pool.query(`UPDATE organizers o SET section = s.section, name = s.name
   FROM students s WHERE o.id = s.id AND o.access_level = 'organizer'
   AND (o.section = '' OR o.name = 'Organizer')`);
-// Revoked organizer rows must always leave a usable student account behind.
-await pool.query(`UPDATE students s SET name = o.name, section = o.section,
-    password_salt = o.salt, password_hash = o.password_hash,
-    must_change_password = o.must_change_password
-  FROM organizers o
-  WHERE o.id = s.id AND o.access_level = 'organizer' AND o.enabled = FALSE;
-  INSERT INTO students (id, name, section, email, password_salt, password_hash, must_change_password)
-  SELECT o.id, o.name, o.section, '', o.salt, o.password_hash, o.must_change_password
-  FROM organizers o
-  WHERE o.access_level = 'organizer' AND o.enabled = FALSE
-    AND NOT EXISTS (SELECT 1 FROM students s WHERE s.id = o.id)
-  ON CONFLICT (id) DO NOTHING;`);
+// One-time repair for organizer accounts revoked before revoke copied credentials
+// into a student account. The marker keeps later student password changes intact.
+const revokedStudentBackfill = await pool.query("SELECT 1 FROM schema_migrations WHERE id = 'revoked-organizer-student-backfill'");
+if (!revokedStudentBackfill.rowCount) {
+  await pool.query(`UPDATE students s SET name = o.name, section = o.section,
+      password_salt = o.salt, password_hash = o.password_hash,
+      must_change_password = o.must_change_password
+    FROM organizers o
+    WHERE o.id = s.id AND o.access_level = 'organizer' AND o.enabled = FALSE;
+    INSERT INTO students (id, name, section, email, password_salt, password_hash, must_change_password)
+    SELECT o.id, o.name, o.section, '', o.salt, o.password_hash, o.must_change_password
+    FROM organizers o
+    WHERE o.access_level = 'organizer' AND o.enabled = FALSE
+      AND NOT EXISTS (SELECT 1 FROM students s WHERE s.id = o.id)
+    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO schema_migrations (id) VALUES ('revoked-organizer-student-backfill') ON CONFLICT DO NOTHING;`);
+}
 await pool.query('ALTER TABLE organizers ADD COLUMN IF NOT EXISTS credential_initialized BOOLEAN NOT NULL DEFAULT FALSE');
 await pool.query(`ALTER TABLE organizer_sessions ALTER COLUMN expires_at DROP NOT NULL;
   DELETE FROM organizer_sessions WHERE expires_at <= NOW();
