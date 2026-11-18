@@ -6,6 +6,39 @@ Neon PostgreSQL is the shared source for rosters, organizer access, events, and
 synced attendance. Organizer phones keep a local SQLite roster and assigned event
 copies so attendance can still be scanned offline.
 
+## Manager console build
+
+The `/manager` page is a React application. Source lives in `manager/` and the
+server serves the esbuild bundle embedded in `public/manager.html`. After editing
+the React source, rebuild it with:
+
+```sh
+npm run build:manager
+```
+
+`react`, `react-dom`, and `esbuild` are development dependencies; the running
+server only reads the generated HTML file. The console no longer reloads the page
+for normal roster, student, organizer, event, attendance, or account actions.
+
+## Schema notes
+
+The server updates its schema at startup and records one-time repairs in
+`schema_migrations`. Recent migrations add event `end_time`, backfill the end time
+for existing events, and backfill usable student accounts for organizers that were
+revoked under the old flow.
+
+`students` and `organizers` intentionally keep separate credential columns so
+mobile students and the manager console can authenticate independently. Revoke
+and grant operations synchronize those credentials, and both session tables are
+cleared so the next login resolves the current role. Attendance rows keep student
+name, event name, and location snapshots for historical accuracy; they are not
+foreign-keyed to live accounts so historical records survive roster deletion.
+
+Indexes cover the hot paths: event date/time, event-organizer assignment,
+attendance event/student and recorded-at reads, roster section/name filtering,
+session revocation by account, active organizer filtering, and recent audit
+history.
+
 ## Local setup
 
 Install Node.js 22+ and PostgreSQL 17. Docker Compose can start PostgreSQL:
@@ -48,7 +81,11 @@ force deletion removes the event and its attendance records. The student
 directory groups sections by
 program and year. New students and password resets use the section as a temporary
 password and require a password change. Deleting a student revokes their organizer
-access but preserves historical attendance. An event created by an organizer is
+access but preserves historical attendance. Revoking organizer access removes the
+account from the active organizer list and keeps the same credentials on its
+student account, so the next login opens the student app with inherited
+attendance. Granting access again from the student picker restores the organizer
+role with the current student password. An event created by an organizer is
 automatically assigned to every active organizer in the same section, including
 events created offline and uploaded later. Every event has a start and end time:
 scans inside the window record Time In, and scans after the end time record Time

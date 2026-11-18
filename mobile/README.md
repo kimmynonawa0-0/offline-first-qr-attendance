@@ -41,8 +41,10 @@ replace it with a different password of at least 12 characters. Dashboard,
 attendance, and import access remain blocked until that change is saved.
 
 Organizer access is granted by the system manager to a student ID already in the
-roster. Revoking access blocks new online sign-ins and syncs. Student requests
-for organizer access and email password recovery are deferred.
+roster. Revoking access blocks organizer sign-ins and syncs, returns the account
+to the student role with the same credentials, and keeps its attendance history.
+Granting access again restores the organizer role. Student requests for organizer
+access and email password recovery are deferred.
 
 ## Migrated flows
 
