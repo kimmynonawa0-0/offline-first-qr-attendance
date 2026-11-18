@@ -56,10 +56,15 @@ export function LoginScreen({ onLogin }) {
               try { bootstrap = await downloadOrganizerBootstrap(remote.sessionToken, apiUrl); }
               catch (error) { bootstrapError = error; }
             }
-            const next = await update(current => cacheRemoteAdminPassword(
-              bootstrap ? mergeOrganizerBootstrap(current, bootstrap) : current,
-              remote.id, undefined, { name: remote.name, section: remote.section, mustChangePassword: remote.mustChangePassword },
-            ));
+            const next = await update(current => {
+              let merged = current;
+              if (bootstrap) {
+                try { merged = mergeOrganizerBootstrap(current, bootstrap); }
+                catch (error) { bootstrapError = error; }
+              }
+              return cacheRemoteAdminPassword(merged, remote.id, undefined,
+                { name: remote.name, section: remote.section, mustChangePassword: remote.mustChangePassword });
+            });
             await setAdminSession({ id: remote.id, role: 'admin', token: remote.sessionToken });
             setAdminAuthIssue('');
             if (bootstrapError) setNotice(`Signed in. Assigned events could not be downloaded: ${bootstrapError.message}`);
@@ -176,7 +181,13 @@ export function ChangePasswordScreen({ onComplete, onLogout }) {
           let bootstrap = null;
           try { bootstrap = await downloadOrganizerBootstrap(updatedSession.sessionToken, process.env.EXPO_PUBLIC_API_URL); }
           catch (bootstrapError) { setNotice(`Password updated. Assigned events could not be downloaded: ${bootstrapError.message}`); }
-          const next = await update(() => bootstrap ? mergeOrganizerBootstrap(candidate, bootstrap) : candidate);
+          let mergeError = null;
+          const next = await update(() => {
+            if (!bootstrap) return candidate;
+            try { return mergeOrganizerBootstrap(candidate, bootstrap); }
+            catch (error) { mergeError = error; return candidate; }
+          });
+          if (mergeError) setNotice(`Password updated. Assigned events could not be refreshed: ${mergeError.message}`);
           if (!native) setWebCredential(user, password);
           await onComplete(native ? { ...user, mustChangePassword: false } : sessionFor(next.admins.find(item => item.id === user.id), 'admin'));
           return;
