@@ -84,7 +84,11 @@ password and require a password change. Deleting a student revokes their organiz
 access but preserves historical attendance. Revoking organizer access removes the
 account from the active organizer list and keeps the same credentials on its
 student account, so the next login opens the student app with inherited
-attendance. Granting access again from the student picker restores the organizer
+attendance. An organizer without a complete name and section profile (for
+example, a legacy or seeded account) is not copied into the student roster
+when revoked, and incomplete student rows are excluded from the organizer
+roster download, so one malformed account can never block organizer sign-in;
+the manager console still lists those rows for editing or deletion. Granting access again from the student picker restores the organizer
 role with the current student password. An event created by an organizer is
 automatically assigned to every active organizer in the same section, including
 events created offline and uploaded later. Every event has a start and end time:
