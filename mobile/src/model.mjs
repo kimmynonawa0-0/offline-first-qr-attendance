@@ -68,7 +68,8 @@ export function mergeOrganizerBootstrap(data, bootstrap) {
   const adminIds = new Set(data.admins.map(account => account.id));
   const students = new Map(data.students.map(account => [account.id, account]));
   for (const student of bootstrap.students) {
-    requireValue(student?.id && student?.name && student?.section, 'The server returned an invalid student roster entry.');
+    // One malformed server row must not block sign-in or hide the rest of the roster.
+    if (!student?.id || !student?.name || !student?.section) continue;
     if (adminIds.has(student.id)) continue;
     const current = students.get(student.id);
     const profile = { id: student.id, name: student.name, section: student.section, email: student.email || '' };
