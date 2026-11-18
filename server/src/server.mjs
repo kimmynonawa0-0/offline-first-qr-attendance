@@ -773,11 +773,21 @@ const server = http.createServer(async (request, response) => {
         } else {
           // Revocation must leave a working student account with the same
           // credentials. Attendance rows are keyed by student ID, so history is
-          // inherited automatically.
+          // inherited automatically. Organizers without a complete name and
+          // section profile fall back to the existing student profile and are
+          // never materialized with blank roster fields.
           await client.query(`INSERT INTO students
               (id, name, section, email, password_salt, password_hash, must_change_password)
-            SELECT o.id, o.name, o.section, '', o.salt, o.password_hash, o.must_change_password
-            FROM organizers o WHERE o.id = $1
+            SELECT o.id,
+              COALESCE(NULLIF(btrim(o.name), ''), s.name),
+              COALESCE(NULLIF(btrim(o.section), ''), s.section),
+              '',
+              o.salt, o.password_hash, o.must_change_password
+            FROM organizers o
+            LEFT JOIN students s ON s.id = o.id
+            WHERE o.id = $1
+              AND COALESCE(NULLIF(btrim(o.name), ''), s.name) IS NOT NULL
+              AND COALESCE(NULLIF(btrim(o.section), ''), s.section) IS NOT NULL
             ON CONFLICT (id) DO UPDATE SET
               name = EXCLUDED.name, section = EXCLUDED.section,
               password_salt = EXCLUDED.password_salt, password_hash = EXCLUDED.password_hash,
