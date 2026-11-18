@@ -512,7 +512,8 @@ const server = http.createServer(async (request, response) => {
           WHERE links.event_id = e.id AND assigned.enabled = TRUE) AS organizers
         FROM events e JOIN event_organizers own ON own.event_id = e.id
         WHERE own.organizer_id = $1 ORDER BY e.date, e.time, e.name`, [organizer.id]);
-      const students = await pool.query('SELECT id, name, section FROM students ORDER BY id');
+      const students = await pool.query(`SELECT id, name, section FROM students
+        WHERE btrim(id) <> '' AND btrim(name) <> '' AND btrim(section) <> '' ORDER BY id`);
       const attendance = await pool.query(`SELECT a.id, a.student_id, a.student_name, a.event_id, a.event_name,
         a.location, a.recorded_at, a.attendance_date, a.attendance_time, a.method,
         a.time_in_at, a.time_in_method, a.time_out_at, a.time_out_method
