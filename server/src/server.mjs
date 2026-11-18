@@ -83,7 +83,14 @@ await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT;
   CREATE INDEX IF NOT EXISTS events_date_start_idx ON events (date, time);
   CREATE INDEX IF NOT EXISTS event_organizers_organizer_idx ON event_organizers (organizer_id);
   CREATE INDEX IF NOT EXISTS students_section_idx ON students (section);
+  CREATE INDEX IF NOT EXISTS students_section_name_idx ON students (section, name);
   CREATE INDEX IF NOT EXISTS attendance_recorded_at_idx ON attendance (recorded_at DESC);
+  CREATE INDEX IF NOT EXISTS attendance_event_recorded_idx ON attendance (event_id, recorded_at DESC);
+  CREATE INDEX IF NOT EXISTS organizer_sessions_organizer_idx ON organizer_sessions (organizer_id);
+  CREATE INDEX IF NOT EXISTS student_sessions_student_idx ON student_sessions (student_id);
+  CREATE INDEX IF NOT EXISTS organizers_active_section_idx ON organizers (enabled, access_level, section);
+  CREATE INDEX IF NOT EXISTS management_audit_created_idx ON management_audit (created_at DESC);
+  CREATE INDEX IF NOT EXISTS management_audit_entity_idx ON management_audit (entity_id, created_at DESC);
   UPDATE events e SET created_by = (
     SELECT a.actor_id FROM management_audit a
     WHERE a.action = 'event_created' AND a.entity_id = e.id
