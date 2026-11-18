@@ -89,6 +89,20 @@ test('organizer bootstrap loads students from every section for cross-section sc
   assert.equal(data.students.some(student => student.id === '90001' && student.section === 'BSIT-2A'), true);
 });
 
+test('organizer bootstrap skips malformed roster entries instead of blocking sign-in', () => {
+  const data = mergeOrganizerBootstrap({ ...ready(), events: [], records: [] }, {
+    students: [
+      { id: '', name: 'Blank ID', section: 'BSCS-3C' },
+      { id: '90001', name: 'Valid Student', section: 'BSIT-2A' },
+      { id: '90002', name: 'Blank Section', section: '' },
+      { name: 'Missing ID', section: 'BSCS-3C' },
+    ],
+    events: [],
+  });
+  assert.deepEqual(data.students.map(student => student.id), ['90001']);
+  assert.equal(data.students[0].name, 'Valid Student');
+});
+
 test('duplicate scans from two organizers merge into one event/student record after sync', () => {
   const data = {
     ...ready(),
