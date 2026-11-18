@@ -134,6 +134,18 @@ await pool.query(`UPDATE organizers SET access_level = 'organizer', enabled = FA
 await pool.query(`UPDATE organizers o SET section = s.section, name = s.name
   FROM students s WHERE o.id = s.id AND o.access_level = 'organizer'
   AND (o.section = '' OR o.name = 'Organizer')`);
+// Revoked organizer rows must always leave a usable student account behind.
+await pool.query(`UPDATE students s SET name = o.name, section = o.section,
+    password_salt = o.salt, password_hash = o.password_hash,
+    must_change_password = o.must_change_password
+  FROM organizers o
+  WHERE o.id = s.id AND o.access_level = 'organizer' AND o.enabled = FALSE;
+  INSERT INTO students (id, name, section, email, password_salt, password_hash, must_change_password)
+  SELECT o.id, o.name, o.section, '', o.salt, o.password_hash, o.must_change_password
+  FROM organizers o
+  WHERE o.access_level = 'organizer' AND o.enabled = FALSE
+    AND NOT EXISTS (SELECT 1 FROM students s WHERE s.id = o.id)
+  ON CONFLICT (id) DO NOTHING;`);
 await pool.query('ALTER TABLE organizers ADD COLUMN IF NOT EXISTS credential_initialized BOOLEAN NOT NULL DEFAULT FALSE');
 await pool.query(`ALTER TABLE organizer_sessions ALTER COLUMN expires_at DROP NOT NULL;
   DELETE FROM organizer_sessions WHERE expires_at <= NOW();
@@ -705,7 +717,12 @@ const server = http.createServer(async (request, response) => {
         const promoted = await client.query(`INSERT INTO organizers (id, salt, password_hash, credential_initialized, access_level, enabled, name, section, must_change_password)
           SELECT id, password_salt, password_hash, NOT must_change_password, 'organizer', TRUE, name, section, must_change_password
           FROM students WHERE id = $1 AND password_hash IS NOT NULL
-          ON CONFLICT (id) DO UPDATE SET enabled = TRUE, name = EXCLUDED.name, section = EXCLUDED.section
+          ON CONFLICT (id) DO UPDATE SET
+            enabled = TRUE, name = EXCLUDED.name, section = EXCLUDED.section,
+            salt = EXCLUDED.salt, password_hash = EXCLUDED.password_hash,
+            credential_initialized = EXCLUDED.credential_initialized,
+            must_change_password = EXCLUDED.must_change_password
+          WHERE organizers.access_level = 'organizer'
           RETURNING id, name, section, enabled, access_level`, [body.studentId.trim()]);
         if (!promoted.rows[0]) {
           await client.query('ROLLBACK');
