@@ -651,7 +651,7 @@ export default function AppScreen() {
         <Muted>{scanned} student{scanned === 1 ? '' : 's'} scanned</Muted>
       </Card>
       <EventAttendanceList rows={eventAttendanceRows(data, event.id)} />
-      <Button secondary onPress={() => go('event', { eventId: event.id })}>{eventPast ? 'Open event' : 'Open event tools'}</Button>
+      {!eventPast && <Button secondary onPress={() => go('event', { eventId: event.id })}>Open event tools</Button>}
     </>;
   } else if (screen === 'event' && event) {
     const schedule = eventSchedule(event);
