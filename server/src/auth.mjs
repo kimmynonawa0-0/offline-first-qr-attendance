@@ -32,13 +32,12 @@ export function organizerEventDeleteError(account, event, attendanceCount) {
   return null;
 }
 
-export function organizerSectionAssigneeIds(account, organizers) {
+export function organizerEventAssigneeIds(account, organizers) {
   if (!canCreateOrganizerEvent(account)) return null;
   const ids = new Set([account.id]);
-  if (account.section && Array.isArray(organizers)) {
+  if (Array.isArray(organizers)) {
     for (const organizer of organizers) {
-      if (organizer?.id && organizer.section === account.section
-        && organizer.access_level === 'organizer' && organizer.enabled !== false) {
+      if (organizer?.id && organizer.access_level === 'organizer' && organizer.enabled !== false) {
         ids.add(organizer.id);
       }
     }

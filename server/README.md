@@ -90,7 +90,7 @@ when revoked, and incomplete student rows are excluded from the organizer
 roster download, so one malformed account can never block organizer sign-in;
 the manager console still lists those rows for editing or deletion. Granting access again from the student picker restores the organizer
 role with the current student password. An event created by an organizer is
-automatically assigned to every active organizer in the same section, including
+automatically assigned to every active organizer across all sections, including
 events created offline and uploaded later. Every event has a start and end time:
 scans inside the window record Time In, and scans after the end time record Time
 Out. Event organizers use the PWA/mobile

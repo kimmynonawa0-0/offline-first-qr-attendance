@@ -6,7 +6,7 @@ import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, valid
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
 import { validateManagedStudent } from './management-students.mjs';
-import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerSectionAssigneeIds } from './auth.mjs';
+import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerEventAssigneeIds } from './auth.mjs';
 import { normalizeEvent, normalizeEventTime } from './event-schedule.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
 import { createManagerRecoveryCode, hashManagerRecoveryCode, managerRecoveryCodeMatches } from './manager-recovery.mjs';
@@ -458,11 +458,9 @@ const server = http.createServer(async (request, response) => {
       if (!organizer) return send(401, { error: 'Your organizer session expired or was revoked. Log in again.' });
       if (!canCreateOrganizerEvent(organizer)) return send(403, { error: organizer.access_level === 'manager' ? 'System managers create and assign events at /manager.' : 'Change your temporary password before creating events.' });
       if (!validEvent(body.event)) return send(400, { error: 'Provide a valid event name, location, date, start time, and end time.' });
-      const sectionOrganizers = organizer.section
-        ? await pool.query(`SELECT id, section, access_level, enabled FROM organizers
-          WHERE enabled = TRUE AND access_level = 'organizer' AND section = $1`, [organizer.section])
-        : { rows: [] };
-      const organizerIds = organizerSectionAssigneeIds(organizer, sectionOrganizers.rows);
+      const activeOrganizers = await pool.query(`SELECT id, enabled, access_level FROM organizers
+        WHERE enabled = TRUE AND access_level = 'organizer'`);
+      const organizerIds = organizerEventAssigneeIds(organizer, activeOrganizers.rows);
       const event = normalizeEvent(body.event);
       const client = await pool.connect();
       try {

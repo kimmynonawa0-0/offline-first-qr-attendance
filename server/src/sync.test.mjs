@@ -47,7 +47,7 @@ test('sync registers a new local event to its organizer in the same transaction'
   assert.equal(calls.at(-1).sql, 'COMMIT');
 });
 
-test('sync shares a new local event with active organizers in the same section', async () => {
+test('sync shares a new local event with all active organizers across sections', async () => {
   const calls = [];
   const client = { async query(sql, args = []) {
     calls.push({ sql, args });
@@ -63,7 +63,7 @@ test('sync shares a new local event with active organizers in the same section',
     { id: 'local-event', name: 'Assembly', location: 'Hall', date: '2026-10-29', time: '10:00', end: '12:00', createdLocally: true },
   ], records: [] }, { id: 'organizer-1', section: 'BSCS-3C', access_level: 'organizer', must_change_password: false });
   const assignment = calls.find(call => call.sql.startsWith('INSERT INTO event_organizers'));
-  assert.deepEqual(assignment.args[1], ['organizer-1', 'organizer-2']);
+  assert.deepEqual(assignment.args[1], ['organizer-1', 'organizer-2', 'organizer-3']);
 });
 
 test('duplicate organizer scans merge into one Time In and one Time Out per student', () => {

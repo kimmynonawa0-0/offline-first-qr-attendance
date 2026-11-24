@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerSectionAssigneeIds } from './auth.mjs';
+import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerEventAssigneeIds } from './auth.mjs';
 
 test('organizer sessions use unpredictable bearer tokens stored only as hashes', () => {
   const first = createOrganizerSessionToken();
@@ -29,18 +29,18 @@ test('organizer app uploads are available after password setup for any section',
   assert.equal(canImportRoster({ access_level:'manager', must_change_password:false }), true);
 });
 
-test('organizer-created events are shared with active organizers in the same section', () => {
+test('organizer-created events are shared with all active organizers across sections', () => {
   const organizer = { id:'org-1', access_level:'organizer', section:'BSCS-3C', must_change_password:false };
-  const sectionOrganizers = [
+  const activeOrganizers = [
     { id:'org-1', access_level:'organizer', section:'BSCS-3C', enabled:true },
     { id:'org-2', access_level:'organizer', section:'BSCS-3C', enabled:true },
     { id:'org-3', access_level:'organizer', section:'BSCS-3C', enabled:false },
     { id:'org-4', access_level:'organizer', section:'BSCS-3A', enabled:true },
     { id:'manager', access_level:'manager', section:'BSCS-3C', enabled:true },
   ];
-  assert.deepEqual(organizerSectionAssigneeIds(organizer, sectionOrganizers), ['org-1', 'org-2']);
-  assert.deepEqual(organizerSectionAssigneeIds({ ...organizer, section:'' }, sectionOrganizers), ['org-1']);
-  assert.equal(organizerSectionAssigneeIds({ ...organizer, must_change_password:true }, sectionOrganizers), null);
+  assert.deepEqual(organizerEventAssigneeIds(organizer, activeOrganizers), ['org-1', 'org-2', 'org-4']);
+  assert.deepEqual(organizerEventAssigneeIds({ ...organizer, section:'' }, activeOrganizers), ['org-1', 'org-2', 'org-4']);
+  assert.equal(organizerEventAssigneeIds({ ...organizer, must_change_password:true }, activeOrganizers), null);
 });
 
 test('organizers can delete only their own events before any check-in', () => {

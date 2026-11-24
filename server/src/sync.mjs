@@ -1,5 +1,5 @@
 import { scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
-import { organizerSectionAssigneeIds } from './auth.mjs';
+import { organizerEventAssigneeIds } from './auth.mjs';
 import { normalizeEvent, normalizeEventTime } from './event-schedule.mjs';
 
 export function passwordHash(password, salt) {
@@ -105,11 +105,11 @@ export async function saveBatch(client, body, organizer) {
   const acceptedEventIds = [];
   await client.query('BEGIN');
   try {
-    const sectionOrganizers = account.section && body.events.some(event => event.createdLocally)
-      ? await client.query(`SELECT id, section, access_level, enabled FROM organizers
-        WHERE enabled = TRUE AND access_level = 'organizer' AND section = $1`, [account.section])
+    const activeOrganizers = body.events.some(event => event.createdLocally)
+      ? await client.query(`SELECT id, enabled, access_level FROM organizers
+        WHERE enabled = TRUE AND access_level = 'organizer'`)
       : { rows: [] };
-    const organizerIds = organizerSectionAssigneeIds(account, sectionOrganizers.rows) || [organizerId];
+    const organizerIds = organizerEventAssigneeIds(account, activeOrganizers.rows) || [organizerId];
 
     const students = uniqueById(body.students);
     if (students.length) {
