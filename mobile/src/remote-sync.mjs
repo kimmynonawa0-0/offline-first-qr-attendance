@@ -142,7 +142,9 @@ export async function downloadStudentAttendance(user, token, apiUrl, fetchImpl =
   if (!token) throw new Error('Sign in online as a student to refresh attendance.');
   const result = await postJson(apiUrl, '/student/attendance', {}, fetchImpl, token);
   if (!Array.isArray(result.records)) throw new Error('Server returned an invalid attendance history.');
-  return result.records.map(mapAttendanceRecord);
+  // Older servers only send attendance; the event feed is optional on the reply.
+  const events = Array.isArray(result.events) ? result.events : [];
+  return { records: result.records.map(mapAttendanceRecord), events };
 }
 
 export async function downloadOrganizerAttendance(user, token, apiUrl, fetchImpl = fetch) {

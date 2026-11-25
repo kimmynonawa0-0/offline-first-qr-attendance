@@ -130,6 +130,27 @@ export function mergeStudentAttendance(data, studentId, remoteRecords) {
   return { ...data, records: [...records.values()].sort((a, b) => (b.recordedAt || '').localeCompare(a.recordedAt || '')) };
 }
 
+export function mergeStudentEvents(data, remoteEvents) {
+  requireValue(Array.isArray(remoteEvents), 'The server returned an invalid event list.');
+  const events = new Map(data.events.map(event => [event.id, event]));
+  for (const event of remoteEvents) {
+    // One malformed server row must not block the student refresh or drop the rest.
+    if (!event?.id || !event?.name) continue;
+    const date = eventDate(event);
+    const time = eventStart(event);
+    const end = eventEnd(event);
+    if (!date || !time || !end) continue;
+    const normalized = { ...event, date, time, end };
+    const current = events.get(event.id);
+    // Server profiles refresh the shared fields; local extras (attendees,
+    // createdLocally, assignedToOrganizer) always win.
+    events.set(event.id, current
+      ? { ...current, ...normalized }
+      : { ...normalized, attendees: event.attendees || [] });
+  }
+  return { ...data, events: [...events.values()] };
+}
+
 export function mergeOrganizerAttendance(data, remoteRecords) {
   requireValue(Array.isArray(remoteRecords), 'The server returned an invalid attendance history.');
   const records = new Map();

@@ -419,9 +419,15 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && request.url === '/student/attendance') {
       const student = await studentForRequest(request);
       if (!student) return send(401, { error: 'Your student session expired or was revoked. Log in again.' });
-      const result = await pool.query(`SELECT id, student_id, student_name, event_id, event_name, location,
-          recorded_at, attendance_date, attendance_time, method, time_in_at, time_in_method, time_out_at, time_out_method
-        FROM attendance WHERE student_id = $1 ORDER BY recorded_at DESC, id`, [student.id]);
+      const [result, events] = await Promise.all([
+        pool.query(`SELECT id, student_id, student_name, event_id, event_name, location,
+            recorded_at, attendance_date, attendance_time, method, time_in_at, time_in_method, time_out_at, time_out_method
+          FROM attendance WHERE student_id = $1 ORDER BY recorded_at DESC, id`, [student.id]),
+        // Every event is visible to every student, regardless of the organizer's
+        // section or year level. Students display this feed on their dashboard.
+        pool.query(`SELECT id, name, location, date, time, end_time AS "end"
+          FROM events ORDER BY date, time, name`),
+      ]);
       return send(200, { records: result.rows.map(record => ({
         id: record.id, studentId: record.student_id, studentName: record.student_name,
         eventId: record.event_id, event: record.event_name || 'Attendance', location: record.location,
@@ -431,7 +437,7 @@ const server = http.createServer(async (request, response) => {
         status: 'PRESENT', method: record.time_in_method,
         time_in_at: record.time_in_at, time_in_method: record.time_in_method,
         time_out_at: record.time_out_at, time_out_method: record.time_out_method, synced: true,
-      })) });
+      })), events: events.rows });
     }
     if (request.method === 'POST' && request.url === '/roster/upload') {
       const account = await organizerForRequest(request);

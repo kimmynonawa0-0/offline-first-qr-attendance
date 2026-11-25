@@ -2,9 +2,9 @@ import { useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { Button, Card, ErrorText, Field, Heading, LinkButton, ModalFrame, Muted, UniversityBanner } from './ui';
-import { cacheRemoteAdminPassword, cacheRemoteStudent, changePassword, mergeOrganizerBootstrap, sessionFor } from './model.mjs';
+import { cacheRemoteAdminPassword, cacheRemoteStudent, changePassword, mergeOrganizerBootstrap, mergeStudentAttendance, mergeStudentEvents, sessionFor } from './model.mjs';
 import { authenticateOffline, getOfflineCredential, saveOfflineCredential } from './offline-auth.mjs';
-import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerBootstrap, isRetryableAuthFailure, loginStudentRemotely } from './remote-sync.mjs';
+import { changeAdminPasswordRemotely, changeStudentPasswordRemotely, downloadOrganizerBootstrap, downloadStudentAttendance, isRetryableAuthFailure, loginStudentRemotely } from './remote-sync.mjs';
 import { reauthenticateOrganizer } from './web-auth.mjs';
 import { useApp } from './state';
 
@@ -74,9 +74,23 @@ export function LoginScreen({ onLogin }) {
             try { await saveOfflineCredential(SecureStore, 'student', remote.id, password); }
             catch { setNotice('Signed in, but this device could not protect an offline password. Offline sign-in is not enabled.'); }
           }
-          const next = await update(current => cacheRemoteStudent(current, remote));
+          let studentSnapshot = null;
+          let studentSnapshotError = null;
+          try {
+            studentSnapshot = await downloadStudentAttendance(remote, remote.sessionToken, apiUrl);
+          } catch (error) { studentSnapshotError = error; }
+          const next = await update(current => {
+            let merged = cacheRemoteStudent(current, remote);
+            if (studentSnapshot) {
+              try {
+                merged = mergeStudentEvents(mergeStudentAttendance(merged, remote.id, studentSnapshot.records), studentSnapshot.events);
+              } catch (error) { studentSnapshotError = error; }
+            }
+            return merged;
+          });
           await setAdminSession({ id: remote.id, role: 'student', token: remote.sessionToken });
           setAdminAuthIssue('');
+          if (studentSnapshotError) setNotice(`Signed in. Attendance could not be downloaded: ${studentSnapshotError.message}`);
           await finishLogin(sessionFor(next.students.find(account => account.id === remote.id), 'student')); return;
         } catch (remoteError) {
           if (native && isRetryableAuthFailure(remoteError)) {

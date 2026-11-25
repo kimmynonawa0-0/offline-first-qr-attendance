@@ -166,7 +166,10 @@ so two organizers who scanned the same student converge after sync instead of
 leaving a stuck pending record. The server uses its own event, student, and
 assignment data when recording attendance, so edits to the phone's roster cannot
 create accounts. Students can refresh records from `/student/attendance`;
-returned attendance is cached on their device for offline viewing. The server
+returned attendance is cached on their device for offline viewing. The same
+response includes the event feed — every event, regardless of the organizing
+section or year level — so a student dashboard can display the current and
+upcoming events. The server
 stores each scan's original date and time for history display.
 
 The management website runs on the same Render service as the API, so browser

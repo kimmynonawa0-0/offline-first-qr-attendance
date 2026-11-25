@@ -52,7 +52,7 @@ access and email password recovery are deferred.
 - System manager website for roster import, organizer access, event assignment, and attendance review.
 - Organizer PWA roster import uploads online to the server and can target any section.
 - Mandatory first-login password change for both roles, persisted across app restarts.
-- Student dashboard, locally generated personal QR, enlarged QR, current event, and searchable personal attendance records.
+- Student dashboard, locally generated personal QR, enlarged QR, current and upcoming events from every section, and searchable personal attendance records.
 - Organizer dashboard focused on assigned events, scanning, local records, and later sync.
 - Event camera QR scanning, student confirmation against the imported roster, duplicate prevention, automatic Time In/Time Out detection, and attendance receipt.
 - Organizer self-check-in and personal QR without account switching.
@@ -177,7 +177,9 @@ address. All phones need a reachable API endpoint. Organizer scans remain on
 the phone until the organizer taps Sync.
 Student attendance history shows server-confirmed records after refresh.
 Students can refresh their own server-synced history from Home or Records while
-online; refreshed records are cached in SQLite for offline viewing. The API
+online; refreshed records are cached in SQLite for offline viewing. The same
+refresh downloads the event feed, so the student home shows the current and
+upcoming events created by any organizer, in any section or year level. The API
 verifies the student's ID and password and returns only records for that ID.
 Event deletion retains historical attendance receipts. Self-check-in is labeled
 as organizer attendance and is available to any logged-in admin managing the event.

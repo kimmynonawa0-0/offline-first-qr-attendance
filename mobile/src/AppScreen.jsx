@@ -16,7 +16,7 @@ import { useApp } from './state';
 import { ChangePasswordScreen, LoginScreen } from './Auth';
 import RosterImport from './RosterImport';
 import Scanner from './Scanner';
-import { attendanceStatus, checkIn, createEvent, deleteEvent, eventAttendanceCount, eventAttendanceRows, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, methodLabel } from './model.mjs';
+import { attendanceStatus, checkIn, createEvent, deleteEvent, eventAttendanceCount, eventAttendanceRows, localDate, mergeOrganizerBootstrap, mergeStudentAttendance, mergeStudentEvents, methodLabel } from './model.mjs';
 import { createOrganizerEvent, deleteOrganizerEvent, downloadOrganizerBootstrap, downloadStudentAttendance, loginStudentRemotely, logoutAdminRemotely, markSynced, syncOrganizerWithReauth } from './remote-sync.mjs';
 import { getOfflineCredential } from './offline-auth.mjs';
 import { serverRefreshScope } from './server-refresh.mjs';
@@ -425,7 +425,7 @@ export default function AppScreen() {
   const focused = useIsFocused();
   const { data, user, setUser, webCredential, adminSession, setAdminSession, clearAdminSession, loading, error: storageError, load, update, online, notice, setNotice, startupRoute, consumeStartupRoute } = useApp();
   const [qrOpen, setQrOpen] = useState(false);
-  const [eventInfoOpen, setEventInfoOpen] = useState(false);
+  const [studentEventInfo, setStudentEventInfo] = useState(null);
   const [scanPickerOpen, setScanPickerOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -485,9 +485,9 @@ export default function AppScreen() {
       let hasUpdates = false;
       await run(async () => {
         if (refreshScope === 'student-attendance') {
-          const records = await withServerSession(token => downloadStudentAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
+          const result = await withServerSession(token => downloadStudentAttendance(user, token, process.env.EXPO_PUBLIC_API_URL));
           await update(current => {
-            const next = mergeStudentAttendance(current, user.id, records);
+            const next = mergeStudentEvents(mergeStudentAttendance(current, user.id, result.records), result.events);
             hasUpdates = JSON.stringify(current) !== JSON.stringify(next);
             return next;
           });
@@ -564,6 +564,7 @@ export default function AppScreen() {
   const personalRecords = user ? data.records.filter(r => r.studentId === user.id) : [];
   const currentEvent = eventForToday(assignedEvents);
   const todayEvents = eventsForToday(assignedEvents);
+  const upcomingEvents = user?.role === 'student' ? groupEventsByPhase(assignedEvents).upcoming : [];
   const todayRecords = data.records.filter(r => r.date === localDate());
   const pending = data.records.filter(r => !r.synced).length;
   const ownAttendance = event?.attendees.find(a => a.id === user?.id);
@@ -607,7 +608,11 @@ export default function AppScreen() {
       <QRCode value={user.id} size={178} />
       <Text style={styles.qrText}>Scan at the event</Text>
     </Pressable>
-    {currentEvent ? <EventRow event={currentEvent} onPress={() => setEventInfoOpen(true)} /> : <Card><Muted>No event is available on this device yet.</Muted></Card>}
+    {currentEvent ? <EventRow event={currentEvent} onPress={() => setStudentEventInfo(currentEvent)} /> : <Card><Muted>No event is available on this device yet.</Muted></Card>}
+    {upcomingEvents.length > 0 && <Card>
+      <Title>Upcoming events</Title>
+      {upcomingEvents.map(event => <EventListRow key={event.id} event={event} onPress={() => setStudentEventInfo(event)} />)}
+    </Card>}
     <Row>
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>My check-ins</Text><Text style={styles.summaryValue}>{personalRecords.length}</Text><Text style={styles.summaryDetail}>Saved on this device</Text></View>
       <View style={styles.summaryTile}><Text style={styles.summaryLabel}>Latest record</Text><Text numberOfLines={2} style={styles.summaryDetail}>{latestPersonalRecord?.event || 'No record yet'}</Text>{latestPersonalRecord && <Muted>{latestPersonalRecord.date} / {latestPersonalRecord.time}</Muted>}</View>
@@ -749,7 +754,7 @@ export default function AppScreen() {
       </View>}
     </View>
     {qrOpen && <ModalFrame title="My attendance QR" onClose={() => setQrOpen(false)} dismissOnBackdrop showClose={false}><View style={styles.qr}><QRCode value={user.id} size={Math.max(120, Math.min(width - 120, 260))} /><Text style={styles.qrText}>Student ID: {user.id}</Text><Text style={styles.qrText}>{user.name}</Text></View></ModalFrame>}
-    {eventInfoOpen && currentEvent && <ModalFrame title="Event details" onClose={() => setEventInfoOpen(false)} dismissOnBackdrop showClose={false}><EventSummary event={currentEvent} /></ModalFrame>}
+    {studentEventInfo && <ModalFrame title="Event details" onClose={() => setStudentEventInfo(null)} dismissOnBackdrop showClose={false}><EventSummary event={studentEventInfo} /></ModalFrame>}
     {createEventOpen && <ModalFrame title="Create event" onClose={() => setCreateEventOpen(false)} busy={busy} showClose={false}>
       <Muted>Set the event window. Scans during the window record Time In; scans after it record Time Out. Every active organizer can scan the event and import rosters from any section. If you are offline, it stays on this device and students will not see a notification. Share the event in your group chat; it will upload with scanned attendance when you have internet.</Muted>
       <Field label="Event name" value={eventDraft.name} onChangeText={name => setEventDraft(current => ({ ...current, name }))} placeholder="e.g. Department assembly" />

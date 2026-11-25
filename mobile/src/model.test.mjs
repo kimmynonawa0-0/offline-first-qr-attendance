@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attendanceStatus, cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, eventAttendanceRows, mergeOrganizerAttendance, mergeOrganizerBootstrap, mergeStudentAttendance } from './model.mjs';
+import { attendanceStatus, cacheRemoteAdminPassword, cacheRemoteStudent, initialData, login, changePassword, createEvent, deleteEvent, checkIn, eventAttendanceRows, mergeOrganizerAttendance, mergeOrganizerBootstrap, mergeStudentAttendance, mergeStudentEvents } from './model.mjs';
 import { importRoster, parseRoster, rosterSummary } from './roster.mjs';
 import { parseSpreadsheet } from './spreadsheet.mjs';
 import * as XLSX from '@e965/xlsx';
@@ -137,6 +137,39 @@ test('student attendance refresh merges only that student\'s records and preserv
   assert.throws(() => mergeStudentAttendance(data, '00123', [
     { id: 'other', studentId: 'another-student', eventId: 'e1', recordedAt: '2026-09-26T10:00:00.000Z' },
   ]), /invalid attendance record/i);
+});
+
+test('student events merge shows events from every section without touching local event data', () => {
+  let data = { ...ready(), events: [{ id: 'local', name: 'Quick event', attendees: [{ id: '00123' }],
+    createdLocally: true, assignedToOrganizer: true }] };
+  data = mergeStudentEvents(data, [
+    { id: 'e1', name: 'Assembly', location: 'Hall', date: '2026-10-17', time: '09:00', end: '12:00' },
+    { id: 'e2', name: 'Cross-section fair', location: 'Gym', date: '2026-10-18', time: '08:00', end: '17:00' },
+  ]);
+  assert.equal(data.events.length, 3);
+  assert.deepEqual(data.events.find(event => event.id === 'e1'), {
+    id: 'e1', name: 'Assembly', location: 'Hall', date: '2026-10-17', time: '09:00', end: '12:00', attendees: [],
+  });
+  const local = data.events.find(event => event.id === 'local');
+  assert.equal(local.createdLocally, true);
+  assert.equal(local.assignedToOrganizer, true);
+  assert.deepEqual(local.attendees, [{ id: '00123' }]);
+  assert.throws(() => mergeStudentEvents(data, null), /invalid event list/i);
+});
+
+test('student events merge refreshes existing events and skips malformed rows', () => {
+  const data = mergeStudentEvents({ ...ready(), events: [{ id: 'e1', name: 'Old name', location: 'Hall',
+    date: '2026-10-17', time: '09:00', end: '12:00', attendees: [{ id: '00123' }] }] }, [
+    { id: 'e1', name: 'Updated name', location: 'New hall', date: '2026-10-17', time: '10:00', end: '13:00' },
+    { id: '', name: 'Blank ID', location: 'X', date: '2026-10-17', time: '09:00', end: '12:00' },
+    { id: 'e2', name: 'Missing date', location: 'X', date: 'bad', time: '09:00', end: '12:00' },
+  ]);
+  assert.equal(data.events.length, 1);
+  const event = data.events[0];
+  assert.equal(event.name, 'Updated name');
+  assert.equal(event.location, 'New hall');
+  assert.equal(event.time, '10:00');
+  assert.deepEqual(event.attendees, [{ id: '00123' }]);
 });
 
 test('organizer attendance refresh merges server records and preserves pending scans', () => {
