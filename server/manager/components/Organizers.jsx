@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { Status, Table } from './ui.jsx';
+import { StudentCombobox } from './StudentCombobox.jsx';
 
 export function OrganizersPage({ token, overview, refresh, notify }) {
   const [studentId, setStudentId] = useState('');
@@ -11,7 +12,7 @@ export function OrganizersPage({ token, overview, refresh, notify }) {
   const available = useMemo(() => (overview?.students || [])
     .filter(student => !active.some(organizer => organizer.id === student.id))
     .sort((left, right) => `${left.section} ${left.name}`.localeCompare(`${right.section} ${right.name}`)), [overview, active]);
-  const selectedId = available.some(student => student.id === studentId) ? studentId : (available[0]?.id || '');
+  const selectedId = available.some(student => student.id === studentId) ? studentId : '';
 
   async function grant() {
     if (!selectedId || busy) return;
@@ -54,12 +55,14 @@ export function OrganizersPage({ token, overview, refresh, notify }) {
     <p>Grant scanning access to a student already in the roster. Their existing student ID and password are used. Revoking access returns the account to the student list with the same attendance history.</p>
     <div className="grid">
       <div>
-        <label htmlFor="student-picker">Student</label>
-        <select id="student-picker" value={selectedId} onChange={event => setStudentId(event.target.value)} disabled={!available.length || busy}>
-          {available.length
-            ? available.map(student => <option key={student.id} value={student.id}>{student.id} — {student.name} ({student.section})</option>)
-            : <option value="">No unassigned students</option>}
-        </select>
+        <StudentCombobox
+          label="Student"
+          options={available}
+          value={selectedId}
+          onChange={setStudentId}
+          disabled={busy}
+          emptyText={available.length ? 'No matching students' : 'No unassigned students'}
+        />
       </div>
       <div className="toolbar align-end">
         <button type="button" onClick={grant} disabled={busy || !selectedId}>{busy ? 'Updating…' : 'Grant organizer access'}</button>
