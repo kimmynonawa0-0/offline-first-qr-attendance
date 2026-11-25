@@ -104,7 +104,7 @@ export function OrganizersPage({ token, overview, refresh, notify }) {
           <div><label htmlFor="direct-organizer-id">Student ID</label><input id="direct-organizer-id" maxLength={100} value={direct.id} onChange={event => setDirect(current => ({ ...current, id: event.target.value }))} required /></div>
           <div><label htmlFor="direct-organizer-name">Full name</label><input id="direct-organizer-name" maxLength={200} value={direct.name} onChange={event => setDirect(current => ({ ...current, name: event.target.value }))} required /></div>
           <div><label htmlFor="direct-organizer-section">Section</label><input id="direct-organizer-section" maxLength={100} placeholder="BSCS-3C" value={direct.section} onChange={event => setDirect(current => ({ ...current, section: event.target.value }))} required /></div>
-          <PasswordField label="Temporary password" id="direct-organizer-password" value={direct.temporaryPassword} onChange={temporaryPassword => setDirect(current => ({ ...current, temporaryPassword }))} autoComplete="new-password" minLength={12} required={false} />
+          <div><PasswordField label="Temporary password" id="direct-organizer-password" value={direct.temporaryPassword} onChange={temporaryPassword => setDirect(current => ({ ...current, temporaryPassword }))} autoComplete="new-password" minLength={12} required={false} /></div>
         </div>
         <div className="toolbar">
           <button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create organizer account'}</button>
