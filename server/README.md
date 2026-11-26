@@ -140,8 +140,10 @@ unconfigured browser origins. It handles JSON preflight requests and permits onl
 app. This is browser cross-origin configuration, not authentication; API routes
 still enforce account and organizer-session authorization.
 
-To make a student an organizer, import that student first, then grant organizer
-access by student ID. Their existing password remains the same. The organizer
+Organizer access comes only from the imported roster: import the student's
+section first, then grant organizer access by searching the student ID in the
+manager console. A made-up ID can never become an organizer account. Their
+existing password remains the same. The organizer
 signs in to the PWA or mobile app with the same credentials. Online app login
 downloads the assigned
 events and student roster into local SQLite. Organizers can delete an event they
@@ -157,7 +159,11 @@ and that server token remains valid until access is revoked.
 Roster files are limited to 1 MB and 5,000 students. The server parses the first
 CSV/Excel sheet during preview, validates it, then provisions student accounts
 transactionally. New students use their section as a temporary password;
-existing credentials are preserved. Students need internet for their first
+existing credentials are preserved. Every student row carries a `created_at`
+insertion timestamp, and the students table is re-clustered on boot so physical
+storage order matches insertion order; the manager console and database browsers
+therefore show newly added students at the bottom (and at the bottom of their
+section group when sorted by section). Students need internet for their first
 server login and password change, then the app caches their account locally.
 
 Attendance sync is transactional and idempotent. Records with the same event and
