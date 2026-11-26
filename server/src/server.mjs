@@ -76,6 +76,13 @@ await pool.query(`ALTER TABLE organizers ADD COLUMN IF NOT EXISTS access_level T
   ALTER TABLE students ADD COLUMN IF NOT EXISTS password_salt TEXT;
   ALTER TABLE students ADD COLUMN IF NOT EXISTS password_hash TEXT;
   ALTER TABLE students ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT TRUE;`);
+// New students carry an insertion timestamp so every list can show the newest
+// account last. The table is re-clustered on boot to keep physical storage
+// order aligned with insertion order, so database browsers (e.g. the Neon
+// console) also show new rows at the bottom by default.
+await pool.query(`ALTER TABLE students ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+  CREATE INDEX IF NOT EXISTS students_created_at_idx ON students (created_at, id);`);
+await pool.query('CLUSTER students USING students_created_at_idx');
 await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT;
   ALTER TABLE events ADD COLUMN IF NOT EXISTS end_time TEXT;
   UPDATE events SET end_time = CASE
