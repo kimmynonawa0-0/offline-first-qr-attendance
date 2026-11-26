@@ -213,7 +213,11 @@ export function StudentsPage({ token, overview, refresh, notify }) {
               <button type="button" className="danger" disabled={busy} onClick={() => { setError(''); setSectionToDelete({ section, count: allSectionCount }); }}>Delete entire section ({allSectionCount})</button>
             </div>
             <Table headings={['Student ID', 'Full name', 'Email', 'Actions']}>
-              {rows.slice().sort((left, right) => left.id.localeCompare(right.id)).map(student => <tr key={student.id}>
+              {rows.slice().sort((left, right) => {
+                const leftOrder = left.created_at || '';
+                const rightOrder = right.created_at || '';
+                return leftOrder.localeCompare(rightOrder) || left.id.localeCompare(right.id);
+              }).map(student => <tr key={student.id}>
                 <td>
                   <label className="check inline-check">
                     <input type="checkbox" checked={selected.has(student.id)} onChange={event => toggleSelected(student.id, event.target.checked)} aria-label={`Select ${student.name}`} />
