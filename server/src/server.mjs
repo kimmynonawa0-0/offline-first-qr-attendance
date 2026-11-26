@@ -567,7 +567,7 @@ const server = http.createServer(async (request, response) => {
       if (!manager) return send(401, { error: 'Sign in to the management website.' });
       if (!isManager(manager)) return send(403, { error: 'Only a system manager can use management tools.' });
       const [students, organizers, events, attendance, audit] = await Promise.all([
-        pool.query('SELECT id, name, section, email, must_change_password FROM students ORDER BY section, name'),
+        pool.query('SELECT id, name, section, email, must_change_password, created_at FROM students ORDER BY created_at, id'),
         pool.query(`SELECT o.id, o.name, o.enabled, o.access_level,
           (SELECT COUNT(*)::int FROM event_organizers eo WHERE eo.organizer_id = o.id) AS assigned_events
           FROM organizers o ORDER BY o.name, o.id`),
