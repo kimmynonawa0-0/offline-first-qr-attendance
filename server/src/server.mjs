@@ -6,7 +6,6 @@ import { passwordHash, passwordMatchesAsync, passwordHashAsync, saveBatch, valid
 import { provisionRoster } from './roster.mjs';
 import { parseRosterFile } from './roster-file.mjs';
 import { validateManagedStudent } from './management-students.mjs';
-import { validateManagedOrganizer } from './management-organizers.mjs';
 import { canCreateOrganizerEvent, canImportRoster, createOrganizerSessionToken, hashSessionToken, loginClientRoleError, organizerEventDeleteError, organizerEventAssigneeIds } from './auth.mjs';
 import { normalizeEvent, normalizeEventTime } from './event-schedule.mjs';
 import { corsDecision, parseWebOrigins } from './cors.mjs';
@@ -749,67 +748,30 @@ const server = http.createServer(async (request, response) => {
       if (!manager) return send(401, { error: 'Sign in to the management website.' });
       if (!isManager(manager)) return send(403, { error: 'Only a system manager can manage organizer access.' });
       const studentId = typeof body.studentId === 'string' ? body.studentId.trim() : '';
-      let direct = null;
-      if (body.organizer && typeof body.organizer === 'object' && !Array.isArray(body.organizer)) {
-        try { direct = validateManagedOrganizer(body.organizer); }
-        catch (error) { return send(400, { error: error.message }); }
-      }
-      if (!direct && !studentId) return send(400, { error: 'Enter a student ID from the imported roster.' });
+      if (!studentId) return send(400, { error: 'Search the imported roster and pick the student to grant organizer access.' });
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        let promoted;
-        let note = null;
-        if (direct) {
-          // An ID already in the roster keeps its own credentials; otherwise a
-          // standalone organizer account is created from the manager's input.
-          const student = await client.query(`SELECT name, section, password_salt, password_hash, must_change_password
-            FROM students WHERE id = $1`, [direct.id]);
-          const usesStudentCredentials = Boolean(student.rows[0]?.password_hash);
-          if (!usesStudentCredentials && !direct.temporaryPassword) {
-            await client.query('ROLLBACK');
-            return send(400, { error: 'A temporary password (at least 12 characters, not the section) is required for organizers who are not in the roster.' });
-          }
-          let insertParams;
-          if (usesStudentCredentials) {
-            const profile = student.rows[0];
-            insertParams = [direct.id, profile.password_salt, profile.password_hash, !profile.must_change_password,
-              profile.name, profile.section, profile.must_change_password];
-            note = 'This ID was already in the roster, so their existing password was kept.';
-          } else {
-            const salt = randomBytes(16).toString('hex');
-            const hash = await passwordHashAsync(direct.temporaryPassword, salt);
-            insertParams = [direct.id, salt, hash, true, direct.name, direct.section, true];
-          }
-          promoted = await client.query(`INSERT INTO organizers (id, salt, password_hash, credential_initialized, access_level, enabled, name, section, must_change_password)
-            VALUES ($1, $2, $3, $4, 'organizer', TRUE, $5, $6, $7)
-            ON CONFLICT (id) DO UPDATE SET
-              enabled = TRUE, name = EXCLUDED.name, section = EXCLUDED.section,
-              salt = EXCLUDED.salt, password_hash = EXCLUDED.password_hash,
-              credential_initialized = TRUE, must_change_password = EXCLUDED.must_change_password
-            WHERE organizers.access_level = 'organizer'
-            RETURNING id, name, section, enabled, access_level`, insertParams);
-        } else {
-          promoted = await client.query(`INSERT INTO organizers (id, salt, password_hash, credential_initialized, access_level, enabled, name, section, must_change_password)
-            SELECT id, password_salt, password_hash, NOT must_change_password, 'organizer', TRUE, name, section, must_change_password
-            FROM students WHERE id = $1 AND password_hash IS NOT NULL
-            ON CONFLICT (id) DO UPDATE SET
-              enabled = TRUE, name = EXCLUDED.name, section = EXCLUDED.section,
-              salt = EXCLUDED.salt, password_hash = EXCLUDED.password_hash,
-              credential_initialized = EXCLUDED.credential_initialized,
-              must_change_password = EXCLUDED.must_change_password
-            WHERE organizers.access_level = 'organizer'
-            RETURNING id, name, section, enabled, access_level`, [studentId]);
-        }
+        // Organizer access comes only from an imported roster row: the student's
+        // credentials, name, and section are copied from the students table so a
+        // made-up ID can never become a standalone organizer account.
+        const promoted = await client.query(`INSERT INTO organizers (id, salt, password_hash, credential_initialized, access_level, enabled, name, section, must_change_password)
+          SELECT id, password_salt, password_hash, NOT must_change_password, 'organizer', TRUE, name, section, must_change_password
+          FROM students WHERE id = $1 AND password_hash IS NOT NULL
+          ON CONFLICT (id) DO UPDATE SET
+            enabled = TRUE, name = EXCLUDED.name, section = EXCLUDED.section,
+            salt = EXCLUDED.salt, password_hash = EXCLUDED.password_hash,
+            credential_initialized = EXCLUDED.credential_initialized,
+            must_change_password = EXCLUDED.must_change_password
+          WHERE organizers.access_level = 'organizer'
+          RETURNING id, name, section, enabled, access_level`, [studentId]);
         if (!promoted.rows[0]) {
           await client.query('ROLLBACK');
-          return send(409, { error: direct
-            ? 'This ID belongs to a system manager account and cannot be granted organizer access.'
-            : 'That student must be imported and have a password before organizer access can be granted.' });
+          return send(409, { error: 'That student ID is not in the imported roster. Import the section roster first, then grant organizer access by searching the ID.' });
         }
-        await writeAudit(client, manager.id, 'organizer_granted', promoted.rows[0].id, direct ? { source: usesStudentCredentials ? 'student' : 'direct' } : {});
+        await writeAudit(client, manager.id, 'organizer_granted', promoted.rows[0].id, {});
         await client.query('COMMIT');
-        return send(200, { organizer: promoted.rows[0], ...(note ? { note } : {}) });
+        return send(200, { organizer: promoted.rows[0] });
       } catch (error) { await client.query('ROLLBACK'); throw error; }
       finally { client.release(); }
     }
